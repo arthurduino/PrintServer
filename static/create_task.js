@@ -52,6 +52,24 @@ document.getElementById('label_type').addEventListener('change', () => {
     }
 });
 
+// Gestionnaire pour le changement de rotation
+document.getElementById('rotate').addEventListener('change', () => {
+    if (currentImage) {
+        console.log('Rotation changée, mise à jour des informations');
+        // Seulement mettre à jour les informations, pas l'aperçu visuel
+        const formatSelect = document.getElementById('label_type');
+        const rotateSelect = document.getElementById('rotate');
+
+        if (originalImageDimensions) {
+            const formatValue = parseInt(formatSelect.value);
+            const heightMm = formatValue;
+            const widthMm = (originalImageDimensions.width / originalImageDimensions.height) * heightMm;
+            const currentRotation = parseInt(rotateSelect.value) || 0;
+            updateDimensionInfo(widthMm, heightMm, currentRotation);
+        }
+    }
+});
+
 // Fonction principale pour mettre à jour l'aperçu
 function updatePreview() {
     const previewCanvas = document.getElementById('preview-canvas');
@@ -78,53 +96,31 @@ function updatePreview() {
             height: tempImg.naturalHeight
         };
 
-        // Déterminer si l'image est paysage ou portrait
-        const isLandscape = tempImg.naturalWidth >= tempImg.naturalHeight;
+        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
 
-        // Sélectionner automatiquement la rotation (inversée : paysages tournés à 90°)
-        const autoRotation = isLandscape ? 90 : 0;
-        rotateSelect.value = autoRotation.toString();
-
-        console.log('Orientation:', isLandscape ? 'paysage' : 'portrait', '→ Rotation:', autoRotation + '°');
-
-        // Calculer les dimensions en millimètres
+        // Calculer les dimensions en millimètres - hauteur toujours = format sélectionné
         const formatValue = parseInt(formatSelect.value);
-        const heightMm = formatValue; // Hauteur = format sélectionné
+        const heightMm = formatValue; // Hauteur fixe selon le format
         const widthMm = (tempImg.naturalWidth / tempImg.naturalHeight) * heightMm; // Largeur proportionnelle
 
         console.log('Dimensions calculées:', widthMm.toFixed(1), 'x', heightMm, 'mm');
 
-        // Créer et ajouter l'image à l'aperçu
+        // Créer et ajouter l'image à l'aperçu (rotation seulement dans les paramètres, pas visuellement)
         const imgElement = document.createElement('img');
         imgElement.src = currentImage;
         imgElement.className = 'preview-image';
-        imgElement.style.transform = `rotate(${autoRotation}deg)`;
+        // Pas de rotation visuelle dans l'aperçu
+        imgElement.style.transform = 'rotate(0deg)';
 
         // Calculer la taille d'affichage pour que l'image tienne dans le canvas
         const canvasWidth = 380;
         const canvasHeight = 280;
 
-        let displayWidth, displayHeight;
+        // Dimensions d'affichage (selon proportions naturelles)
+        const displayWidthPx = widthMm * (300 / 25.4);  // Convertir mm vers pixels
+        const displayHeightPx = heightMm * (300 / 25.4);
 
-        if (isLandscape) {
-            // Paysage avec rotation 90° - échanger les dimensions
-            displayWidth = heightMm; // Après rotation 90°, height devient width
-            displayHeight = widthMm; // Après rotation 90°, width devient height
-        } else {
-            // Portrait avec rotation 0°
-            displayWidth = widthMm;
-            displayHeight = heightMm;
-        }
-
-        console.log('Affichage final:', displayWidth.toFixed(1), 'x', displayHeight.toFixed(1), 'mm pour canvas', canvasWidth, 'x', canvasHeight);
-
-        // Convertir en pixels
-        const dpi = 300;
-        const pixelsPerMm = dpi / 25.4;
-        const displayWidthPx = displayWidth * pixelsPerMm;
-        const displayHeightPx = displayHeight * pixelsPerMm;
-
-        // Calculer l'échelle
+        // Calculer l'échelle pour adapter au canvas
         const scaleX = canvasWidth / displayWidthPx;
         const scaleY = canvasHeight / displayHeightPx;
         const scale = Math.min(scaleX, scaleY, 1);
@@ -136,8 +132,9 @@ function updatePreview() {
 
         previewCanvas.appendChild(imgElement);
 
-        // Mettre à jour les informations de dimension
-        updateDimensionInfo(displayWidth, displayHeight, autoRotation);
+        // Mettre à jour les informations de dimension (sans tenir compte de la rotation pour l'affichage)
+        const currentRotation = parseInt(rotateSelect.value) || 0;
+        updateDimensionInfo(widthMm, heightMm, currentRotation);
     };
 
     tempImg.src = currentImage;
