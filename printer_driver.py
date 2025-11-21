@@ -113,3 +113,40 @@ class PrinterDriver:
             'raw_phase': raw_phase,
             'is_error': False  # Cooling n'est pas une erreur bloquante
         }
+
+    def send_and_wait(self, data: bytes):
+        """Envoie les données binaires (raster) et attend que l'impression soit terminée.
+
+        Lève une exception si papier vide détecté.
+        """
+        # Envoie les données par paquets de 64 octets (taille d'endpoint standard)
+        chunk_size = 64
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            self.ep_out.write(chunk)
+
+            # Petit délai pour éviter de submerger l'imprimante
+            time.sleep(0.01)
+
+        # Boucle d'attente tant que busy
+        while True:
+            status = self.get_status()
+            if not status['is_busy']:
+                break
+            if status['paper_empty']:
+                raise Exception("Papier vide détecté pendant l'impression")
+            time.sleep(0.1)  # Vérification toutes les 100ms
+
+    def disconnect(self):
+        """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""
+        if self.dev:
+            usb.util.dispose_resources(self.dev)
+            # Remet le kernel driver si nécessaire (Linux)
+            try:
+                self.dev.attach_kernel_driver(0)
+            except (AttributeError, NotImplementedError):
+                pass
+            self.dev = None
+
+# Note : Sur Raspberry Pi, pyusb nécessite des permissions root ou des règles udev appropriées.
+            usb.util.dispose_resources(self.dev)
