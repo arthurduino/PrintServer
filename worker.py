@@ -177,12 +177,56 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
             _update_task_progress(task_id, qty_done)
 
         except Exception as e:
-            print(f"Échec de l'impression #{qty_done + 1}: {e}")
-            print(f"Tâche {task_id} marquée en erreur - passage à la suivante")
-            # Marquer comme erreur mais continuer le worker (pas de raise)
-            _update_task_status(task_id, 'ERROR')
-            _update_command_status(cmd_id, 'ERROR')
-            return  # Sortir de la fonction pour passer à la tâche suivante
+            error_msg = str(e)
+            print(f"Échec de l'impression #{qty_done + 1}: {error_msg}")
+
+            # Gestion spéciale pour les erreurs de ressource busy (imprimante occupée/verrouillée)
+            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
+                print(f"Imprimante occupée pour {task_id} - tentative de reset USB...")
+                # Tenter de reset l'imprimante pour libérer les ressources
+                reset_success = printer.reset_usb_device()
+
+                if reset_success:
+                    print("Reset USB réussi, tentative d'impression après reset...")
+                    # Attendre un peu puis essayer directement (pas de pause de 10s)
+                    time.sleep(2)
+                    try:
+                        send(
+                            instructions=form,
+                            printer_identifier="usb://04f9:2042",
+                            blocking=True
+                        )
+                        print(f"Impression #{qty_done + 1} réussie après reset USB")
+                        qty_done += 1
+                        _update_task_progress(task_id, qty_done)
+                    except Exception as retry_e:
+                        print(f"Échec même après reset USB: {retry_e}")
+                        _update_task_status(task_id, 'ERROR')
+                        _update_command_status(cmd_id, 'ERROR')
+                        return
+                else:
+                    print("Reset USB échoué, nouvel essai avec attente classique...")
+                    time.sleep(10)  # Attente classique si reset impossible
+                    try:
+                        send(
+                            instructions=form,
+                            printer_identifier="usb://04f9:2042",
+                            blocking=True
+                        )
+                        print(f"Impression #{qty_done + 1} réussie au deuxième essai classique")
+                        qty_done += 1
+                        _update_task_progress(task_id, qty_done)
+                    except Exception as retry_e:
+                        print(f"Échec définitif même après attente classique: {retry_e}")
+                        _update_task_status(task_id, 'ERROR')
+                        _update_command_status(cmd_id, 'ERROR')
+                        return
+            else:
+                # Autre type d'erreur - marquer comme erreur immédiatement
+                print(f"Tâche {task_id} marquée en erreur - passage à la suivante")
+                _update_task_status(task_id, 'ERROR')
+                _update_command_status(cmd_id, 'ERROR')
+                return
 
         # Délai entre impressions pour éviter surcharge
         if qty_done < qty_tot:
@@ -229,11 +273,54 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
             _update_task_progress(task_id, qty_done)
 
         except Exception as e:
-            print(f"Échec de l'impression série #{qty_done + 1}: {e}")
-            print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
-            _update_task_status(task_id, 'ERROR')
-            _update_command_status(cmd_id, 'ERROR')
-            return
+            error_msg = str(e)
+            print(f"Échec de l'impression série #{qty_done + 1}: {error_msg}")
+
+            # Gestion spéciale pour les erreurs de ressource busy
+            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
+                print(f"Imprimante occupée pour série {task_id} - tentative de reset USB...")
+                reset_success = printer.reset_usb_device()
+
+                if reset_success:
+                    print("Reset USB réussi pour série, tentative d'impression après reset...")
+                    time.sleep(2)
+                    try:
+                        send(
+                            instructions=form,
+                            printer_identifier="usb://04f9:2042",
+                            blocking=True
+                        )
+                        print(f"Impression série #{qty_done + 1} réussie après reset USB")
+                        qty_done += 1
+                        _update_task_progress(task_id, qty_done)
+                    except Exception as retry_e:
+                        print(f"Échec de la série même après reset USB: {retry_e}")
+                        _update_task_status(task_id, 'ERROR')
+                        _update_command_status(cmd_id, 'ERROR')
+                        return
+                else:
+                    print("Reset USB échoué pour série, nouvel essai avec attente classique...")
+                    time.sleep(10)
+                    try:
+                        send(
+                            instructions=form,
+                            printer_identifier="usb://04f9:2042",
+                            blocking=True
+                        )
+                        print(f"Impression série #{qty_done + 1} réussie au deuxième essai classique")
+                        qty_done += 1
+                        _update_task_progress(task_id, qty_done)
+                    except Exception as retry_e:
+                        print(f"Échec définitif de la série même après attente classique: {retry_e}")
+                        _update_task_status(task_id, 'ERROR')
+                        _update_command_status(cmd_id, 'ERROR')
+                        return
+            else:
+                # Autre type d'erreur
+                print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
+                _update_task_status(task_id, 'ERROR')
+                _update_command_status(cmd_id, 'ERROR')
+                return
 
         # Délai entre impressions pour éviter surcharge
         if qty_done < qty_tot:

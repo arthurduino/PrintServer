@@ -165,7 +165,27 @@ class PrinterDriver:
         except Exception as e:
             raise Exception(f"Échec de la reconnexion USB: {e}")
 
-    # Plus de send_and_wait - brother_ql gère tout !
+    def reset_usb_device(self):
+        """Reset l'interface USB de l'imprimante pour libérer les ressources busy."""
+        try:
+            print("Tentative de reset USB de l'imprimante...")
+            if self.dev:
+                # Reset l'interface USB 0
+                self.dev.reset()
+                print("Reset USB effectué - attente de 2 secondes pour stabilization...")
+                time.sleep(2)  # Attendre que l'imprimante se stabilise
+
+                # Essayer de reconnecter
+                print("Tentative de reconnexion après reset...")
+                usb.util.dispose_resources(self.dev)
+                self.dev = None
+                time.sleep(1)
+                self.connect_usb()
+                print("Reconnexion après reset réussie !")
+                return True
+        except Exception as e:
+            print(f"Échec du reset USB: {e}")
+            return False
 
     def disconnect(self):
         """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""
