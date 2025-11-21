@@ -73,7 +73,7 @@ function updatePreview() {
         const displayHeightPx = displayHeightMm * pixelsPerMm;
 
         // Pour les rotations de 90° et 270°, échanger largeur/hauteur
-        const isRotated = rotation === 90 || rotation === 270;
+        const isRotated = autoRotation === 90 || autoRotation === 270;
         const actualDisplayWidthPx = isRotated ? displayHeightPx : displayWidthPx;
         const actualDisplayHeightPx = isRotated ? displayWidthPx : displayHeightPx;
 
@@ -91,7 +91,7 @@ function updatePreview() {
         img.style.maxHeight = '100%';
 
         previewCanvas.appendChild(img);
-        updateDimensionInfo(displayWidthMm, displayHeightMm, rotation);
+        updateDimensionInfo(displayWidthMm, displayHeightMm, autoRotation);
     };
     tempImg.src = currentImage;
 }
