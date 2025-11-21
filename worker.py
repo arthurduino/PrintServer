@@ -143,11 +143,17 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
     # Rasterise une seule fois
     qlr = BrotherQLRaster(options['model'])
     form = convert(qlr, [image_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
-    binary_data = form.render(options['print_script'])
+
+    # Gestion des différentes versions de brother_ql API
+    if hasattr(form, 'render'):
+        binary_data = form.render(options['print_script'])
+    else:
+        binary_data = form
 
     qty_done = 0
     for _ in range(qty_tot):
-        printer.send_and_wait(binary_data.data)  # Envoi via notre driver bas niveau
+        data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
+        printer.send_and_wait(data_to_send)  # Envoi via notre driver bas niveau
         qty_done += 1
         _update_task_progress(task_id, qty_done)
 
@@ -177,9 +183,15 @@ def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty
         # Rasterise pour chaque image
         qlr = BrotherQLRaster(options['model'])
         form = convert(qlr, [img_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
-        binary_data = form.render(options['print_script'])
 
-        printer.send_and_wait(binary_data.data)
+        # Gestion des différentes versions de brother_ql API
+        if hasattr(form, 'render'):
+            binary_data = form.render(options['print_script'])
+        else:
+            binary_data = form
+
+        data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
+        printer.send_and_wait(data_to_send)
         qty_done += 1
         _update_task_progress(task_id, qty_done)
 
