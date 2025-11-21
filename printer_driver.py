@@ -193,13 +193,21 @@ class PrinterDriver:
             is_heavy_print: Si True, utilise des délais plus longs pour les gros transferts
         """
         try:
+            print(f"Début de l'envoi des données ({len(data)} bytes)" + (" - GROS TRANSFERT" if is_heavy_print else ""))
             # Envoi bloquant des données
             self.ep_out.write(data)
+            print("Données envoyées, attente de fin d'impression...")
             # Attente bloquante tant que l'imprimante est occupée
             # Ajouter un délai pour éviter la saturation USB avec les gros fichiers
+            wait_count = 0
             while True:
                 status = self.get_status()
+                wait_count += 1
+                if wait_count % 10 == 0:  # Log tous les 10 polls
+                    print(f"Attente impression... (poll #{wait_count}) - Status: {status.get('phase', 'UNKNOWN')}")
+
                 if not status['is_busy']:
+                    print(f"Impression terminée après {wait_count} polls")
                     break
                 if status['paper_empty']:
                     raise Exception("Papier vide détecté pendant l'impression")
