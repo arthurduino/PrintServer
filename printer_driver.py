@@ -133,24 +133,27 @@ class PrinterDriver:
 
         Lève une exception si papier vide détecté ou timeout.
         """
-        # Envoie toutes les données en une seule fois pour éviter le stuttering
-        self.ep_out.write(data)
+        try:
+            # Envoie toutes les données en une seule fois avec timeout
+            self.ep_out.write(data, timeout=10000)  # Timeout 10 secondes pour l'envoi
 
-        start_time = time.time()
-        max_wait_time = 60.0  # Timeout après 60 secondes
+            start_time = time.time()
+            max_wait_time = 60.0  # Timeout après 60 secondes pour l'attente
 
-        # Boucle d'attente tant que busy
-        while True:
-            status = self.get_status()
-            if status.get('is_error', False):
-                raise Exception("Erreur USB lors de la vérification du status de l'imprimante")
-            if not status['is_busy']:
-                break
-            if status['paper_empty']:
-                raise Exception("Papier vide détecté pendant l'impression")
-            if time.time() - start_time > max_wait_time:
-                raise Exception("Timeout en attente de la fin de l'impression")
-            time.sleep(0.1)  # Vérification toutes les 100ms
+            # Boucle d'attente tant que busy
+            while True:
+                status = self.get_status()
+                if status.get('is_error', False):
+                    raise Exception("Erreur USB lors de la vérification du status de l'imprimante")
+                if not status['is_busy']:
+                    break
+                if status['paper_empty']:
+                    raise Exception("Papier vide détecté pendant l'impression")
+                if time.time() - start_time > max_wait_time:
+                    raise Exception("Timeout en attente de la fin de l'impression")
+                time.sleep(0.1)  # Vérification toutes les 100ms
+        except usb.core.USBError as e:
+            raise Exception(f"Erreur USB lors de l'envoi des données d'impression: {e}") from e
 
     def disconnect(self):
         """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""
