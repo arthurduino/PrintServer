@@ -79,8 +79,22 @@ class PrinterDriver:
         cmd = b'\x1B\x69\x53'  # ESC i S
         self.ep_out.write(cmd)
 
-        # Lit 32 octets de réponse
-        response = self.ep_in.read(32)
+        # Lit 32 octets de réponse avec gestion timeout
+        try:
+            response = self.ep_in.read(32, timeout=5000)  # Timeout 5 secondes
+        except usb.core.USBError as e:
+            # En cas de timeout ou erreur USB
+            print(f"Erreur USB lors de la lecture du status: {e}")
+            # Retourne un statut d'erreur par défaut
+            return {
+                'is_busy': False,
+                'paper_empty': False,
+                'cover_open': False,
+                'is_cooling': False,
+                'phase': 'ERROR',
+                'raw_phase': 0,
+                'is_error': True
+            }
 
         # Parsing selon la spécification Brother (adapté pour QL-700)
         is_busy = (response[18] & 0x01) != 0  # bit 0 de l'octet 18
@@ -117,18 +131,25 @@ class PrinterDriver:
     def send_and_wait(self, data: bytes):
         """Envoie les données binaires (raster) et attend que l'impression soit terminée.
 
-        Lève une exception si papier vide détecté.
+        Lève une exception si papier vide détecté ou timeout.
         """
         # Envoie toutes les données en une seule fois pour éviter le stuttering
         self.ep_out.write(data)
 
+        start_time = time.time()
+        max_wait_time = 60.0  # Timeout après 60 secondes
+
         # Boucle d'attente tant que busy
         while True:
             status = self.get_status()
+            if status.get('is_error', False):
+                raise Exception("Erreur USB lors de la vérification du status de l'imprimante")
             if not status['is_busy']:
                 break
             if status['paper_empty']:
                 raise Exception("Papier vide détecté pendant l'impression")
+            if time.time() - start_time > max_wait_time:
+                raise Exception("Timeout en attente de la fin de l'impression")
             time.sleep(0.1)  # Vérification toutes les 100ms
 
     def disconnect(self):

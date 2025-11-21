@@ -56,8 +56,16 @@ def _worker_loop(printer: PrinterDriver):
 
         except Exception as e:
             print(f"Erreur lors du traitement de la tâche {task_id}: {e}")
+            # Si c'est une erreur temporaire (timeout, USB), on peut essayer de paused ou retry, mais pour simplicité, ERROR
             _update_task_status(task_id, 'ERROR')
             _update_command_status(cmd_id, 'ERROR')
+            # Log détaillé pour debug
+            if 'Timeout' in str(e) or 'Operation timed out' in str(e):
+                print(f"Tâche {task_id} échouée à cause d'un timeout - vérifier connexion USB ou imprimerie")
+            elif 'Papier vide' in str(e):
+                print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
+            elif 'Erreur USB' in str(e):
+                print(f"Tâche {task_id} échouée : problème USB - vérifier câble et permissions")
             # Pause prolongée en cas d'erreur
             time.sleep(10)
 
