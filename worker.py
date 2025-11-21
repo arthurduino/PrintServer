@@ -142,7 +142,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
 
     # Rasterise une seule fois
     qlr = BrotherQLRaster(options['model'])
-    form = convert(qlr, [image_path], options['label'], options['rotate'], options['cut'])
+    form = convert(qlr, [image_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
     binary_data = form.render(options['print_script'])
 
     qty_done = 0
@@ -176,7 +176,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty
 
         # Rasterise pour chaque image
         qlr = BrotherQLRaster(options['model'])
-        form = convert(qlr, [img_path], options['label'], options['rotate'], options['cut'])
+        form = convert(qlr, [img_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
         binary_data = form.render(options['print_script'])
 
         printer.send_and_wait(binary_data.data)
