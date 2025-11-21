@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Server Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Tableau de Bord - Serveur d'Impression</h1>
+
+    <!-- Status de l'imprimante -->
+    <div id="printer-status">
+        Chargement du statut...
+    </div>
+
+    <!-- Commande en cours -->
+    <section>
+        <h2>Commande en Cours</h2>
+        <div id="current-job">
+            <p>Chargement...</p>
+        </div>
+    </section>
+
+    <!-- Liste d'attente -->
+    <section>
+        <h2>Liste d'Attente</h2>
+        <ul id="job-list">
+            <li>Chargement...</li>
+        </ul>
+    </section>
+
+    <!-- Contrôles du worker -->
+    <section>
+        <h3>Contrôles du Worker</h3>
+        <button id="pause-btn">Pause Worker</button>
+        <button id="resume-btn">Resume Worker</button>
+    </section>
+
+    <!-- Formulaire de test -->
+    <section>
+        <h3>Créer un Job de Test (Batch 10 exemplaires)</h3>
+        <form id="upload-form" enctype="multipart/form-data">
+            <label for="files">Sélectionner une image :</label>
+            <input type="file" id="files" name="files" accept="image/*" required>
+
+            <label for="command_json">Configuration JSON (optionnel, sera remplacé par test) :</label>
+            <textarea id="command_json" name="command_json" rows="5"
+                      placeholder='{"nom_client":"Test","taches":[{"type":"BATCH","quantite":10,"config":{"image_path":"image.jpg","cut":true,"label_type":"62","rotate":"0"}}]}'></textarea>
+
+            <button type="submit">Créer Job de Test</button>
+        </form>
+    </section>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

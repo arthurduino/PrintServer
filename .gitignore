@@ -1,0 +1,51 @@
+# Base de données SQLite
+printserver.db
+*.db
+
+# Dossier uploads (images utilisateur)
+uploads/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environnements virtuels
+venv/
+env/
+ENV/
+
+# Fichiers de configuration personalisés
+.env
+.config
+
+# Fichiers temporaires
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribuables
+dist/
+build/
+*.egg-info/
+
+# Tests
+.coverage
+.pytest_cache/
+
+# Note: Ne pas ignorer requirements.txt si utilisé
