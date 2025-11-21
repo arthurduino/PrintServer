@@ -137,7 +137,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
     if not image_path:
         raise ValueError("Config BATCH manquante: image_path")
 
-    # Configuration des options par défaut
+    # Configuration des options par défaut, ajustée pour gros transferts
     options = {
         'cut': config.get('cut', True),
         'copies': 1,  # On gère les copies dans la boucle
@@ -145,6 +145,10 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
         'label': config.get('label_type', '62'),
         'rotate': config.get('rotate', '0'),
         'print_script': None,
+        # Options spéciales pour gros fichiers sombres
+        'compress': True,  # Activer la compression
+        'red': False,      # Désactiver traitement rouge pour simplifier
+        '600dpi': False,   # Utiliser 300dpi au lieu de 600dpi si possible
     }
 
     # Rasterise une seule fois
@@ -159,37 +163,36 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
 
     qty_done = 0
     for _ in range(qty_tot):
-        data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
-        data_size = len(data_to_send) if isinstance(data_to_send, bytes) else len(str(data_to_send))
-
-        # Détection d'étiquettes longues/heavy (>3cm de long avec bcp de noirs)
-        is_heavy_print = data_size > 5000  # Taille seuil pour gros transferts
-        if is_heavy_print:
-            print(f"Gros transfert détecté : {data_size} bytes pour {image_path}")
+        print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql intégrée...")
 
         try:
-            printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)  # Envoi avec adaptation timeout
+            # Utiliser directement la méthode send() de brother_ql qui gère tout correctement
+            # Elle utilise pyusb en interne et gère les temporisations et gros transferts
+            send(
+                brother_ql_backend="pyusb",  # Utilise pyusb comme nous
+                printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
+                instructions=form,  # Données raster déjà préparées
+                **options
+            )
+            print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
+
         except Exception as e:
-            # Gestion spéciale pour les erreurs USB lors d'images volumineuses
-            if 'array index out of range' in str(e).lower() or 'Timeout' in str(e):
-                print(f"Nouvelle tentative après erreur USB avec l'image {image_path} ({data_size} bytes)...")
-                time.sleep(3)  # Pause plus longue pour les gros fichiers
-                try:
-                    printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)
-                except Exception as retry_e:
-                    print(f"Échec permanent après retry pour {image_path}: {retry_e}")
-                    raise retry_e
-            else:
-                raise e
+            print(f"Erreur lors de l'impression #{qty_done + 1}: {e}")
+            # En cas d'erreur avec brother_ql, essayer avec notre méthode de secours
+            print("Tentative avec méthode de secours manuelle...")
+            try:
+                data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
+                printer.send_and_wait(data_to_send, is_heavy_print=True)
+                print(f"Impression #{qty_done + 1} réussie avec méthode de secours")
+            except Exception as backup_e:
+                print(f"Échec définitif de l'impression #{qty_done + 1}: {backup_e}")
+                raise backup_e
 
         qty_done += 1
         _update_task_progress(task_id, qty_done)
-        # Délai supplémentaire pour éviter saturation avec gros volumes, plus long pour heavy prints
-        if qty_done % 5 == 0:  # Tous les 5 exemplaires
-            delay = 0.3 if is_heavy_print else 0.1  # Délaí adapté
-            time.sleep(delay)
-        elif is_heavy_print:
-            time.sleep(0.05)  # Micro-délai entre chaque étiquette heavy
+        # Petit délai entre impressions pour éviter surcharge
+        if qty_done < qty_tot:  # Pas de délai après la dernière
+            time.sleep(0.2)
 
 def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes."""
