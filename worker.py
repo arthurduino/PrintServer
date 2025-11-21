@@ -12,14 +12,16 @@ try:
     from brother_ql.raster import BrotherQLRaster
     from brother_ql.backends.helpers import send
     from brother_ql.conversion import convert
+    from brother_ql.models import QL700  # Modèle spécifique
     # Note: send n'est pas utilisé car on utilise notre propre driver bas niveau
 except ImportError:
     print("Erreur: brother_ql n'est pas installé. Installez-le avec pip.")
     # Fallback ou simulation pour tests
     brother_ql = None
+    QL700 = None
 
-# Configuration de l'imprimante (modèle QL-700)
-MODEL = brother_ql.models['QL-700'] if brother_ql else None
+# Instance du modèle QL-700
+MODEL = QL700() if QL700 else None
 
 def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
