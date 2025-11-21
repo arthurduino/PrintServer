@@ -12,18 +12,16 @@ try:
     from brother_ql.raster import BrotherQLRaster
     from brother_ql.backends.helpers import send
     from brother_ql.conversion import convert
-    from brother_ql.models import QL700  # Modèle spécifique
     print("brother_ql importé avec succès")
     # Note: send n'est pas utilisé car on utilise notre propre driver bas niveau
 except ImportError as e:
     print(f"Erreur: brother_ql n'est pas installé: {e}")
     # Fallback ou simulation pour tests
     brother_ql = None
-    QL700 = None
 
-# Instance du modèle QL-700
-MODEL = QL700() if QL700 else None
-print(f"Modèle QL-700: {MODEL}")
+# Modèle QL-700 comme string (many examples use this)
+MODEL = 'QL-700'
+print(f"ModèleBrother QL-700: {MODEL}")
 
 def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
