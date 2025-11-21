@@ -167,12 +167,12 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
 
         try:
             # Utiliser directement la méthode send() de brother_ql qui gère tout correctement
-            # Elle utilise pyusb en interne et gère les temporisations et gros transferts
+            # Signature correcte : send(instructions, printer_identifier=..., backend=...)
             send(
-                brother_ql_backend="pyusb",  # Utilise pyusb comme nous
-                printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
                 instructions=form,  # Données raster déjà préparées
-                **options
+                printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
+                backend="pyusb",  # Backend pyusb
+                blocking=True  # Attendre la fin de l'impression
             )
             print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
 
