@@ -160,9 +160,27 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
     qty_done = 0
     for _ in range(qty_tot):
         data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
-        printer.send_and_wait(data_to_send)  # Envoi via notre driver bas niveau
+
+        try:
+            printer.send_and_wait(data_to_send)  # Envoi via notre driver bas niveau avec timeout
+        except Exception as e:
+            # Gestion spéciale pour les erreurs USB lors d'images volumineuses
+            if 'array index out of range' in str(e).lower() or 'Timeout' in str(e):
+                print(f"Nouvelle tentative après erreur USB avec l'image {img_path}...")
+                time.sleep(2)  # Pause avant retry
+                try:
+                    printer.send_and_wait(data_to_send)
+                except Exception as retry_e:
+                    print(f"Échec permanent après retry pour {img_path}: {retry_e}")
+                    raise retry_e
+            else:
+                raise e
+
         qty_done += 1
         _update_task_progress(task_id, qty_done)
+        # Délai supplémentaire pour éviter saturation avec gros volumes
+        if qty_done % 5 == 0:  # Tous les 5 exemplaires
+            time.sleep(0.1)
 
 def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes."""

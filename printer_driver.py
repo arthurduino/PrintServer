@@ -82,6 +82,20 @@ class PrinterDriver:
         # Lit 32 octets de réponse de manière bloquante
         response = self.ep_in.read(32)
 
+        # Vérifier que la réponse fait bien 32 octets (évite array index out of range)
+        if len(response) < 32:
+            print(f"Réponse USB tronquée: {len(response)} octets reçus au lieu de 32")
+            # Retourner un statut d'erreur générique en cas de réponse incomplète
+            return {
+                'is_busy': False,
+                'paper_empty': False,
+                'cover_open': False,
+                'is_cooling': False,
+                'phase': 'ERROR',
+                'raw_phase': 0,
+                'is_error': True
+            }
+
         # Parsing selon la spécification Brother (adapté pour QL-700)
         is_busy = (response[18] & 0x01) != 0  # bit 0 de l'octet 18
 
@@ -161,12 +175,15 @@ class PrinterDriver:
             # Envoi bloquant des données
             self.ep_out.write(data)
             # Attente bloquante tant que l'imprimante est occupée
+            # Ajouter un délai pour éviter la saturation USB avec les gros fichiers
             while True:
                 status = self.get_status()
                 if not status['is_busy']:
                     break
                 if status['paper_empty']:
                     raise Exception("Papier vide détecté pendant l'impression")
+                # Délai critique pour éviter saturation USB sur gros fichiers
+                time.sleep(0.5)
         except usb.core.USBError as e:
             print(f"Erreur USB détectée: {e}")
             # Tente reconnexion et retry
@@ -180,6 +197,8 @@ class PrinterDriver:
                         break
                     if status['paper_empty']:
                         raise Exception("Papier vide détecté après reconnexion")
+                    # Même délai pour éviter saturation après reconnexion
+                    time.sleep(0.5)
                 print("Reprise de l'impression réussie après reconnexion.")
             except usb.core.USBError as e2:
                 raise Exception(f"Échec permanent de l'impression après reconnexion: {e2}")

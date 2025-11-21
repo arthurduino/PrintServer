@@ -1,21 +1,23 @@
 // Mise à jour périodique des données
 setInterval(async () => {
     try {
-        // Mise à jour du status de l'imprimante
+        // Mise à jour du status de l'imprimante avec fréquence adaptée
         const statusResponse = await fetch('/api/printer/status');
         const statusData = await statusResponse.json();
         updatePrinterStatus(statusData);
 
-        // Mise à jour des jobs/tâches
-        const jobsResponse = await fetch('/api/jobs');
-        const jobs = await jobsResponse.json();
-        updateCurrentJob(jobs);
-        updateJobList(jobs);
+        // Mise à jour des jobs/tâches moins fréquemment pour éviter surcharge
+        if (Math.random() < 0.3) {  // ~30% de chance à chaque intervalle = ~3 secondes en moyenne
+            const jobsResponse = await fetch('/api/jobs');
+            const jobs = await jobsResponse.json();
+            updateCurrentJob(jobs);
+            updateJobList(jobs);
+        }
     } catch (error) {
         console.error('Erreur mise à jour:', error);
         document.getElementById('printer-status').textContent = 'Erreur de connexion';
     }
-}, 1000);
+}, 2000);  // Intervalle doublé pour réduire la charge USB
 
 // Mise à jour du statut de l'imprimante
 function updatePrinterStatus(statusData) {
@@ -32,6 +34,10 @@ function updatePrinterStatus(statusData) {
     } else if (statusData.status === 'Busy') {
         statusEl.textContent = 'Status: Impression en cours';
         statusEl.style.color = '#3498db';
+    } else if (statusData.status === 'Error') {
+        // Gestion spéciale pour les erreurs USB/réseau
+        statusEl.textContent = 'Status: Erreur de communication USB';
+        statusEl.style.color = '#e74c3c';
     } else {
         statusEl.textContent = `Status: ${statusData.detail || statusData.status}`;
         statusEl.style.color = '#e74c3c';
