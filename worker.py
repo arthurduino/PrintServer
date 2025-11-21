@@ -52,6 +52,9 @@ def _worker_loop(printer: PrinterDriver):
 
             # Après succès, marque la tâche comme DONE
             _update_task_status(task_id, 'DONE')
+            # Incrémenter le compteur d'impressions
+            from database import update_printer_stat
+            update_printer_stat('PRINT_COUNT', qty_done)
             _check_command_completion(cmd_id)
 
         except Exception as e:
@@ -59,6 +62,9 @@ def _worker_loop(printer: PrinterDriver):
             # Si c'est une erreur temporaire (timeout, USB), on peut essayer de paused ou retry, mais pour simplicité, ERROR
             _update_task_status(task_id, 'ERROR')
             _update_command_status(cmd_id, 'ERROR')
+            # Incrémenter le compteur d'erreurs
+            from database import update_printer_stat
+            update_printer_stat('ERROR_COUNT', 1)
             # Log détaillé pour debug
             if 'Timeout' in str(e) or 'Operation timed out' in str(e):
                 print(f"Tâche {task_id} échouée à cause d'un timeout - vérifier connexion USB ou imprimerie")

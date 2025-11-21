@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Tâches - Print Server</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .task-form {
+            background: #f9f9f9;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .task-list {
+            margin-top: 20px;
+        }
+        .task-item {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .task-info {
+            flex: 1;
+        }
+        .task-priority {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+        }
+        .priority-0 { background: #6c757d; } /* Normal */
+        .priority-1 { background: #28a745; } /* Haut */
+        .priority-2 { background: #ffc107; color: black; } /* Urgent */
+        .priority-3 { background: #dc3545; } /* Critique */
+        .task-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .status-TODO { background: #e9ecef; color: #495057; }
+        .status-IN_PROGRESS { background: #fff3cd; color: #856404; }
+        .status-DONE { background: #d4edda; color: #155724; }
+        .status-ARCHIVED { background: #f8f9fa; color: #6c757d; }
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 0.9em;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-warning { background: #ffc107; color: black; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+        .task-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .filter-buttons {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Gestion des Tâches</h1>
+
+    <nav>
+        <a href="/">Dashboard</a> |
+        <a href="/products">Produits</a> |
+        <a href="/queue">File d'attente</a> |
+        <a href="/stats">Statistiques</a>
+    </nav>
+
+    <!-- Filtres -->
+    <div class="filter-buttons">
+        <button class="btn btn-secondary" onclick="loadTasks(false)">Tâches actives</button>
+        <button class="btn btn-info" onclick="loadTasks(true)">Toutes les tâches</button>
+    </div>
+
+    <!-- Formulaire d'ajout de tâche -->
+    <div class="task-form">
+        <h2>Ajouter une nouvelle tâche</h2>
+        <form id="task-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="title">Titre de la tâche *</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="priority">Priorité</label>
+                    <select id="priority" name="priority">
+                        <option value="0">Normal</option>
+                        <option value="1">Haut</option>
+                        <option value="2">Urgent</option>
+                        <option value="3">Critique</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="description">Description (optionnel)</label>
+                <textarea id="description" name="description"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="linked_type">Type de liaison</label>
+                    <select id="linked_type" name="linked_type">
+                        <option value="">Aucune</option>
+                        <option value="IMAGE">Image</option>
+                        <option value="BATCH">Lot d'images</option>
+                        <option value="PRODUCT">Produit</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="linked_id">ID de liaison</label>
+                    <input type="text" id="linked_id" name="linked_id" placeholder="Chemin image, ID lot ou ID produit">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Ajouter Tâche</button>
+        </form>
+    </div>
+
+    <!-- Liste des tâches -->
+    <section class="task-list">
+        <h2>Tâches</h2>
+        <div id="tasks-container">
+            <p>Chargement des tâches...</p>
+        </div>
+    </section>
+
+    <!-- Modal de modification (caché par défaut) -->
+    <div id="edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h3>Modifier la tâche</h3>
+            <form id="edit-task-form">
+                <input type="hidden" id="edit-task-id" name="task_id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-title">Titre de la tâche *</label>
+                        <input type="text" id="edit-title" name="title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-priority">Priorité</label>
+                        <select id="edit-priority" name="priority">
+                            <option value="0">Normal</option>
+                            <option value="1">Haut</option>
+                            <option value="2">Urgent</option>
+                            <option value="3">Critique</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-description">Description</label>
+                    <textarea id="edit-description" name="description"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-linked_type">Type de liaison</label>
+                        <select id="edit-linked_type" name="linked_type">
+                            <option value="">Aucune</option>
+                            <option value="IMAGE">Image</option>
+                            <option value="BATCH">Lot d'images</option>
+                            <option value="PRODUCT">Produit</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-linked_id">ID de liaison</label>
+                        <input type="text" id="edit-linked_id" name="linked_id">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success">Mettre à jour</button>
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Annuler</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+    <script>
+        let tasks = [];
+
+        // Charger les tâches
+        async function loadTasks(includeArchived = false) {
+            try {
+                const response = await fetch(`/api/tasks?include_archived=${includeArchived}`);
+                tasks = await response.json();
+                displayTasks();
+            } catch (error) {
+                console.error('Erreur chargement tâches:', error);
+                document.getElementById('tasks-container').innerHTML = '<p>Erreur de chargement des tâches</p>';
+            }
+        }
+
+        // Afficher les tâches
+        function displayTasks() {
+            const container = document.getElementById('tasks-container');
+            if (tasks.length === 0) {
+                container.innerHTML = '<p>Aucune tâche trouvée.</p>';
+                return;
+            }
+
+            // Trier par priorité (descendant) puis par date de création (descendant)
+            const sortedTasks = [...tasks].sort((a, b) => {
+                if (a.priority !== b.priority) {
+                    return b.priority - a.priority;
+                }
+                return new Date(b.created_at) - new Date(a.created_at);
+            });
+
+            container.innerHTML = sortedTasks.map(task => `
+                <div class="task-item">
+                    <div class="task-info">
+                        <h3>${task.title}</h3>
+                        ${task.description ? `<p>${task.description}</p>` : ''}
+                        <div>
+                            <span class="task-priority priority-${task.priority}">
+                                Priorité: ${getPriorityName(task.priority)}
+                            </span>
+                            <span class="task-status status-${task.status}">${getStatusName(task.status)}</span>
+                            ${task.linked_type ? `<small>Lié à: ${task.linked_type} (${task.linked_id})</small>` : ''}
+                            <small>Créé: ${new Date(task.created_at).toLocaleString()}</small>
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        ${task.status === 'TODO' ? `<button class="btn btn-info" onclick="updateTaskStatus(${task.id}, 'IN_PROGRESS')">Commencer</button>` : ''}
+                        ${task.status === 'IN_PROGRESS' ? `<button class="btn btn-success" onclick="updateTaskStatus(${task.id}, 'DONE')">Terminer</button>` : ''}
+                        <button class="btn btn-warning" onclick="editTask(${task.id})">Modifier</button>
+                        <button class="btn btn-danger" onclick="deleteTask(${task.id})">Supprimer</button>
+                        ${task.status !== 'ARCHIVED' ? `<button class="btn btn-secondary" onclick="archiveTask(${task.id})">Archiver</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getPriorityName(priority) {
+            const names = ['Normal', 'Haut', 'Urgent', 'Critique'];
+            return names[priority] || 'Normal';
+        }
+
+        function getStatusName(status) {
+            const names = {
+                'TODO': 'À faire',
+                'IN_PROGRESS': 'En cours',
+                'DONE': 'Terminé',
+                'ARCHIVED': 'Archivé'
+            };
+            return names[status] || status;
+        }
+
+        // Ajouter une tâche
+        document.getElementById('task-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+
+            try {
+                const response = await fetch('/api/tasks', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Tâche ajoutée avec succès!');
+                    e.target.reset();
+                    loadTasks();
+                } else {
+                    alert('Erreur: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Erreur ajout tâche:', error);
+                alert('Erreur lors de l\'ajout de la tâche');
+            }
+        });
+
+        // Modifier une tâche
+        function editTask(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('edit-task-id').value = task.id;
+            document.getElementById('edit-title').value = task.title;
+            document.getElementById('edit-description').value = task.description || '';
+            document.getElementById('edit-priority').value = task.priority;
+            document.getElementById('edit-linked_type').value = task.linked_type || '';
+            document.getElementById('edit-linked_id').value = task.linked_id || '';
+
+            document.getElementById('edit-modal').style.display = 'block';
+        }
+
+        // Fermer le modal de modification
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        // Soumettre la modification
+        document.getElementById('edit-task-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const taskId = formData.get('task_id');
+
+            try {
+                const response = await fetch(`/api/tasks/${taskId}`, {
+                    method: 'PUT',
+                    body: formData
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Tâche modifiée avec succès!');
+                    closeEditModal();
+                    loadTasks();
+                } else {
+                    alert('Erreur: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Erreur modification tâche:', error);
+                alert('Erreur lors de la modification de la tâche');
+            }
+        });
+
+        // Mettre à jour le statut d'une tâche
+        async function updateTaskStatus(taskId, status) {
+            try {
+                const response = await fetch(`/api/tasks/${taskId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `status=${status}`
+                });
+                if (response.ok) {
+                    loadTasks(); // Recharger la liste
+                } else {
+                    const result = await response.json();
+                    alert('Erreur: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Erreur mise à jour statut:', error);
+                alert('Erreur lors de la mise à jour du statut');
+            }
+        }
+
+        // Archiver une tâche
+        async function archiveTask(taskId) {
+            if (!confirm('Êtes-vous sûr de vouloir archiver cette tâche ?')) return;
+            await updateTaskStatus(taskId, 'ARCHIVED');
+        }
+
+        // Supprimer une tâche
+        async function deleteTask(taskId) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cette tâche ?')) return;
+
+            try {
+                const response = await fetch(`/api/tasks/${taskId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Tâche supprimée avec succès!');
+                    loadTasks();
+                } else {
+                    alert('Erreur: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Erreur suppression tâche:', error);
+                alert('Erreur lors de la suppression de la tâche');
+            }
+        }
+
+        // Chargement initial
+        document.addEventListener('DOMContentLoaded', () => loadTasks(false));
+    </script>
+</body>
+</html>
