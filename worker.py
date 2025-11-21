@@ -44,9 +44,9 @@ def _worker_loop(printer: PrinterDriver):
 
         try:
             if type_t == 'BATCH':
-                _process_batch_task(printer, task_id, config, qty_tot)
+                _process_batch_task(printer, task_id, cmd_id, config, qty_tot)
             elif type_t == 'SERIES':
-                _process_series_task(printer, task_id, config, qty_tot)
+                _process_series_task(printer, task_id, cmd_id, config, qty_tot)
             else:
                 raise ValueError(f"Type de tâche inconnu: {type_t}")
 
@@ -128,7 +128,7 @@ def _check_command_completion(cmd_id: int):
         conn.commit()
     conn.close()
 
-def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
+def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
     """Traite une tâche BATCH : imprime multiples copies de la même étiquette."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
@@ -188,7 +188,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
         if qty_done < qty_tot:
             time.sleep(0.2)
 
-def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
+def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
@@ -202,6 +202,8 @@ def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty
 
     qty_done = 0
     for img_path in images:
+        print(f"Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
+
         # Configuration des options par défaut pour chaque image
         options = {
             'cut': config.get('cut', True),
@@ -215,16 +217,27 @@ def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty
         qlr = BrotherQLRaster(options['model'])
         form = convert(qlr, [img_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
 
-        # Gestion des différentes versions de brother_ql API
-        if hasattr(form, 'render'):
-            binary_data = form.render(options['print_script'])
-        else:
-            binary_data = form
+        try:
+            # Utiliser seulement la méthode brother_ql.send()
+            send(
+                instructions=form,
+                printer_identifier="usb://04f9:2042",
+                blocking=True
+            )
+            print(f"Impression série #{qty_done + 1} terminée avec succès")
+            qty_done += 1
+            _update_task_progress(task_id, qty_done)
 
-        data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
-        printer.send_and_wait(data_to_send)
-        qty_done += 1
-        _update_task_progress(task_id, qty_done)
+        except Exception as e:
+            print(f"Échec de l'impression série #{qty_done + 1}: {e}")
+            print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
+            _update_task_status(task_id, 'ERROR')
+            _update_command_status(cmd_id, 'ERROR')
+            return
+
+        # Délai entre impressions pour éviter surcharge
+        if qty_done < qty_tot:
+            time.sleep(0.2)
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # printer = PrinterDriver()
