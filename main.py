@@ -104,18 +104,25 @@ async def create_job(
     except json.JSONDecodeError:
         return {"error": "JSON invalide pour la commande"}
 
-    # Créer le dossier uploads s'il n'existe pas
+    # Créer le dossier uploads s'il n'existe pas (avec permissions complètes)
     os.makedirs("uploads", exist_ok=True)
+    # Fix permissions pour éviter problèmes avec sudo/root
+    os.chmod("uploads", 0o755)
 
     # Sauvegarder les fichiers uploadés et mapper les noms
     saved_files = {}
     for file in files:
         if file.filename:
             file_path = f"uploads/{file.filename}"
-            with open(file_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
-            saved_files[file.filename] = file_path
+            try:
+                with open(file_path, "wb") as f:
+                    content = await file.read()
+                    f.write(content)
+                # Fix permissions du fichier
+                os.chmod(file_path, 0o644)
+                saved_files[file.filename] = os.path.abspath(file_path)  # Chemin absolu
+            except Exception as e:
+                return {"error": f"Erreur sauvegarde fichier {file.filename}: {str(e)}"}
 
     # Modifier les chemins d'images dans les configs des tâches
     for task in command_data.get("taches", []):
