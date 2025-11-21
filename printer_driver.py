@@ -119,14 +119,8 @@ class PrinterDriver:
 
         Lève une exception si papier vide détecté.
         """
-        # Envoie les données par paquets de 64 octets (taille d'endpoint standard)
-        chunk_size = 64
-        for i in range(0, len(data), chunk_size):
-            chunk = data[i:i + chunk_size]
-            self.ep_out.write(chunk)
-
-            # Petit délai pour éviter de submerger l'imprimante
-            time.sleep(0.01)
+        # Envoie toutes les données en une seule fois pour éviter le stuttering
+        self.ep_out.write(data)
 
         # Boucle d'attente tant que busy
         while True:
