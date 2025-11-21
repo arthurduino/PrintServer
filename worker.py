@@ -163,35 +163,29 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
 
     qty_done = 0
     for _ in range(qty_tot):
-        print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql intégrée...")
+        print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
 
         try:
-            # Utiliser directement la méthode send() de brother_ql qui gère tout correctement
-            # Signature correcte : send(instructions, printer_identifier=..., backend=...)
+            # Utiliser seulement la méthode brother_ql.send() - pas de méthode manuelle
             send(
                 instructions=form,  # Données raster déjà préparées
                 printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
-                backend="pyusb",  # Backend pyusb
                 blocking=True  # Attendre la fin de l'impression
             )
             print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
+            qty_done += 1
+            _update_task_progress(task_id, qty_done)
 
         except Exception as e:
-            print(f"Erreur lors de l'impression #{qty_done + 1}: {e}")
-            # En cas d'erreur avec brother_ql, essayer avec notre méthode de secours
-            print("Tentative avec méthode de secours manuelle...")
-            try:
-                data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
-                printer.send_and_wait(data_to_send, is_heavy_print=True)
-                print(f"Impression #{qty_done + 1} réussie avec méthode de secours")
-            except Exception as backup_e:
-                print(f"Échec définitif de l'impression #{qty_done + 1}: {backup_e}")
-                raise backup_e
+            print(f"Échec de l'impression #{qty_done + 1}: {e}")
+            print(f"Tâche {task_id} marquée en erreur - passage à la suivante")
+            # Marquer comme erreur mais continuer le worker (pas de raise)
+            _update_task_status(task_id, 'ERROR')
+            _update_command_status(cmd_id, 'ERROR')
+            return  # Sortir de la fonction pour passer à la tâche suivante
 
-        qty_done += 1
-        _update_task_progress(task_id, qty_done)
-        # Petit délai entre impressions pour éviter surcharge
-        if qty_done < qty_tot:  # Pas de délai après la dernière
+        # Délai entre impressions pour éviter surcharge
+        if qty_done < qty_tot:
             time.sleep(0.2)
 
 def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
