@@ -5,7 +5,10 @@ from fastapi.responses import HTMLResponse
 from typing import List
 import json
 import os
-from database import init_db, create_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json
+from database import (
+    init_db, create_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
+    create_product, get_products, get_product, update_product, delete_product, get_product_image_path
+)
 from printer_driver import PrinterDriver
 from worker import run_worker
 
@@ -78,6 +81,12 @@ async def get_new_task():
 async def get_archive():
     """Sert la page d'archive des tâches terminées."""
     with open("templates/archive.html") as f:
+        return f.read()
+
+@app.get("/products", response_class=HTMLResponse)
+async def get_products_page():
+    """Sert la page de gestion des produits (autocollants enregistrés)."""
+    with open("templates/products.html") as f:
         return f.read()
 
 @app.get("/api/jobs")
@@ -197,6 +206,95 @@ async def get_printer_status():
             return {"status": "Ready", "detail": "Prêt à imprimer", "phase": status['phase']}
     except Exception as e:
         return {"status": "Error", "detail": str(e), "phase": "UNKNOWN"}
+
+# API Routes pour les produits (autocollants enregistrés)
+
+@app.get("/api/products")
+async def get_products_list():
+    """Renvoie la liste des produits actifs."""
+    products_raw = get_products(actif_only=True)
+    products = []
+    for p in products_raw:
+        products.append({
+            "id": p[0],
+            "nom": p[1],
+            "description": p[2],
+            "format_type": p[3],
+            "rotation": p[4],
+            "image_path": p[5],
+            "date_creation": p[6]
+        })
+    return products
+
+@app.get("/api/products/{product_id}")
+async def get_product_detail(product_id: int):
+    """Renvoie les détails d'un produit spécifique."""
+    product_raw = get_product(product_id)
+    if not product_raw:
+        return {"error": "Produit non trouvé"}
+
+    return {
+        "id": product_raw[0],
+        "nom": product_raw[1],
+        "description": product_raw[2],
+        "format_type": product_raw[3],
+        "rotation": product_raw[4],
+        "image_path": product_raw[5],
+        "date_creation": product_raw[6],
+        "actif": product_raw[7]
+    }
+
+@app.post("/api/products")
+async def create_product_api(
+    product_json: str = Form(..., description="JSON du produit"),
+    file: UploadFile = File(..., description="Fichier image")
+):
+    """Crée un nouveau produit."""
+    try:
+        product_data = json.loads(product_json)
+    except json.JSONDecodeError:
+        return {"error": "JSON invalide pour le produit"}
+
+    # Créer le dossier uploads s'il n'existe pas
+    os.makedirs("uploads", exist_ok=True)
+
+    # Sauvegarder le fichier uploadé
+    file_path = f"uploads/{file.filename}"
+    try:
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+    except Exception as e:
+        return {"error": f"Erreur sauvegarde fichier: {str(e)}"}
+
+    # Créer le produit en BDD
+    product_id = create_product(
+        product_data["nom"],
+        product_data.get("description"),
+        product_data["format_type"],
+        product_data["rotation"],
+        file.filename  # On sauvegarde seulement le nom du fichier, pas le chemin complet
+    )
+
+    return {
+        "product": {
+            "id": product_id,
+            "nom": product_data["nom"],
+            "description": product_data.get("description"),
+            "format_type": product_data["format_type"],
+            "rotation": product_data["rotation"],
+            "image_path": file.filename
+        }
+    }
+
+@app.delete("/api/products/{product_id}")
+async def delete_product_api(product_id: int):
+    """Supprime (désactive) un produit."""
+    try:
+        delete_product(product_id)
+        return {"message": "Produit supprimé"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # Point d'entrée pour lancer le serveur (si exécuté directement)
 if __name__ == "__main__":

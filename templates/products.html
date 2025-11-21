@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nouvelle tâche - Print Server</title>
+    <title>Gestion des produits - Print Server</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,41 +13,21 @@
             <h1 class="nav-title">🖨️ Serveur d'Impression</h1>
             <div class="nav-links">
                 <a href="/" class="nav-link">Accueil</a>
-                <a href="/new-task" class="nav-link active">Nouvelle tâche</a>
+                <a href="/new-task" class="nav-link">Nouvelle tâche</a>
+                <a href="/products" class="nav-link active">Produits</a>
                 <a href="/archive" class="nav-link">Archive</a>
             </div>
         </div>
     </nav>
 
     <div class="container">
-        <!-- Create Job -->
+        <!-- Create Product -->
         <div class="section create-section">
-            <h2>Créer une nouvelle tâche</h2>
-
-            <!-- Task Type Selection -->
-            <div class="task-type-selector">
-                <h2>Source de l'image</h2>
-                <div class="task-type-options">
-                    <div class="task-type-option selected" data-type="custom">
-                        <h3>📷 Image personnalisée</h3>
-                        <p>Téléchargez votre propre image</p>
-                    </div>
-                    <div class="task-type-option" data-type="product">
-                        <h3>🏷️ Produit enregistré</h3>
-                        <p>Sélectionnez parmi vos autocollants prédéfinis</p>
-                    </div>
-                </div>
-
-                <!-- Product Selection Section -->
-                <div class="product-selection alert alert-info">
-                    <h4>Vous allez utiliser un produit enregistré</h4>
-                    <p>Dirigez-vous vers la <a href="/products" style="color: #007bff; text-decoration: underline;">page Produits</a> pour créer vos modèles d'autocollants, puis revenez ici pour les utiliser.</p>
-                </div>
-            </div>
+            <h2>Créer un nouveau produit</h2>
 
             <!-- Preview Section -->
-            <div class="preview-section" id="preview-section">
-                <h3>Aperçu de l'impression</h3>
+            <div class="preview-section">
+                <h3>Aperçu du produit</h3>
                 <div class="preview-container">
                     <div class="preview-paper">
                         <div id="preview-canvas" class="preview-canvas">
@@ -68,16 +48,22 @@
                 </div>
             </div>
 
-            <form id="job-form" class="simple-form">
+            <form id="product-form" class="simple-form">
                 <div class="form-row">
+                    <div class="form-group">
+                        <label for="nom">Nom du produit:</label>
+                        <input type="text" id="nom" name="nom" required placeholder="Ex: Logo Entreprise">
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description (optionnel):</label>
+                        <input type="text" id="description" name="description" placeholder="Description du produit">
+                    </div>
                     <div class="form-group">
                         <label for="files">Image:</label>
                         <input type="file" id="files" name="files" accept="image/*" required>
                     </div>
-                    <div class="form-group">
-                        <label for="quantity">Quantité:</label>
-                        <input type="number" id="quantity" name="quantity" value="1" min="1" required>
-                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label for="label_type">Format:</label>
                         <select id="label_type" name="label_type" required>
@@ -86,8 +72,6 @@
                             <option value="30">30mm</option>
                         </select>
                     </div>
-                </div>
-                <div class="form-row">
                     <div class="form-group">
                         <label for="rotate">Rotation:</label>
                         <select id="rotate" name="rotate" required>
@@ -96,20 +80,23 @@
                             <option value="180">180°</option>
                             <option value="270">270°</option>
                         </select>
-                        <small class="form-hint">Sélectionnez la rotation pour l'impression</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="cut">
-                            <input type="checkbox" id="cut" name="cut" checked> Découpe
-                        </label>
+                        <small class="form-hint">La rotation sera appliquée lors de l'impression</small>
                     </div>
                     <div class="form-group">
                         <button type="submit" class="btn btn-primary full-width">
-                            Créer la tâche
+                            Créer le produit
                         </button>
                     </div>
                 </div>
             </form>
+        </div>
+
+        <!-- Products List -->
+        <div class="section">
+            <h2>Produits enregistrés</h2>
+            <div id="products-list" class="products-grid">
+                <!-- Les produits seront chargés ici -->
+            </div>
         </div>
     </div>
 
@@ -117,11 +104,11 @@
     <div id="message-overlay" class="message-overlay" style="display: none;">
         <div class="message-content">
             <h3 id="message-title">Succès</h3>
-            <p id="message-text">Tâche créée</p>
+            <p id="message-text">Produit créé</p>
             <button id="message-close" class="btn btn-primary">OK</button>
         </div>
     </div>
 
-    <script src="/static/create_task.js"></script>
+    <script src="/static/products.js"></script>
 </body>
 </html>

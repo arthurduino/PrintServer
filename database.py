@@ -36,6 +36,20 @@ def init_db():
         )
     ''')
 
+    # Création de la table produits (autocollants enregistrés)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            description TEXT,
+            format_type TEXT NOT NULL CHECK(format_type IN ('62', '48', '30')),
+            rotation INTEGER NOT NULL CHECK(rotation IN (0, 90, 180, 270)),
+            image_path TEXT NOT NULL,
+            date_creation TEXT DEFAULT CURRENT_TIMESTAMP,
+            actif BOOLEAN DEFAULT 1
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -154,6 +168,79 @@ def delete_tache(tache_id: int):
     cursor.execute('DELETE FROM taches WHERE id = ?', (tache_id,))
     conn.commit()
     conn.close()
+
+# Fonctions CRUD pour produits (autocollants enregistrés)
+
+def create_product(nom: str, description: Optional[str], format_type: str, rotation: int, image_path: str) -> int:
+    """Crée un nouveau produit et retourne l'id."""
+    if format_type not in ['62', '48', '30']:
+        raise ValueError("Format invalide")
+    if rotation not in [0, 90, 180, 270]:
+        raise ValueError("Rotation invalide")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO products (nom, description, format_type, rotation, image_path, actif)
+        VALUES (?, ?, ?, ?, ?, 1)
+    ''', (nom, description, format_type, rotation, image_path))
+    product_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return product_id
+
+def get_products(actif_only: bool = True) -> List[Tuple]:
+    """Retourne tous les produits (actifs seulement par défaut)."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    if actif_only:
+        cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation FROM products WHERE actif = 1 ORDER BY date_creation DESC')
+    else:
+        cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation, actif FROM products ORDER BY date_creation DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def get_product(product_id: int) -> Tuple:
+    """Retourne un produit par id."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation, actif FROM products WHERE id = ?', (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+def update_product(product_id: int, nom: str, description: Optional[str], format_type: str, rotation: int):
+    """Met à jour un produit."""
+    if format_type not in ['62', '48', '30']:
+        raise ValueError("Format invalide")
+    if rotation not in [0, 90, 180, 270]:
+        raise ValueError("Rotation invalide")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE products
+        SET nom = ?, description = ?, format_type = ?, rotation = ?
+        WHERE id = ?
+    ''', (nom, description, format_type, rotation, product_id))
+    conn.commit()
+    conn.close()
+
+def delete_product(product_id: int):
+    """Supprime (désactive) un produit au lieu de le supprimer vraiment."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE products SET actif = 0 WHERE id = ?', (product_id,))
+    conn.commit()
+    conn.close()
+
+def get_product_image_path(product_id: int) -> str:
+    """Retourne le chemin de l'image d'un produit."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('SELECT image_path FROM products WHERE id = ? AND actif = 1', (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 # Fonction utilitaire pour parser config_json
 def parse_config_json(config_json: str) -> dict:

@@ -10,24 +10,14 @@ let currentImage = null;
 let currentFile = null;
 let originalImageDimensions = null;
 
-// Variables globales
-let selectedTaskType = 'custom'; // 'custom' ou 'product'
-
-// Initialiser l'aperçu au chargement de la page
+// Initialiser la page au chargement
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page chargée, initialisation de l\'aperçu');
-    initTaskTypeSelector();
+    console.log('Page produits chargée, initialisation');
     updatePreview();
-
-    // Gérer les paramètres d'URL pour les produits
-    const urlParams = new URLSearchParams(window.location.search);
-    const productId = urlParams.get('product');
-    if (productId) {
-        loadProductForTask(productId);
-    }
+    loadProducts();
 });
 
-// Gestionnaire pour le changement de fichier image
+// Gestionnaire pour le changement d'image dans le formulaire produit
 document.getElementById('files').addEventListener('change', async (event) => {
     const file = event.target.files[0];
 
@@ -49,7 +39,7 @@ document.getElementById('files').addEventListener('change', async (event) => {
     const reader = new FileReader();
     reader.onload = (e) => {
         currentImage = e.target.result;
-        console.log('Image chargée, mise à jour de l\'aperçu');
+        console.log('Image chargée, mise à jour de l\'aperçu produit');
         updatePreview();
     };
     reader.readAsDataURL(file);
@@ -58,7 +48,7 @@ document.getElementById('files').addEventListener('change', async (event) => {
 // Gestionnaire pour le changement de format
 document.getElementById('label_type').addEventListener('change', () => {
     if (currentImage) {
-        console.log('Format changé, mise à jour de l\'aperçu');
+        console.log('Format changé, mise à jour de l\'aperçu produit');
         updatePreview();
     }
 });
@@ -66,8 +56,8 @@ document.getElementById('label_type').addEventListener('change', () => {
 // Gestionnaire pour le changement de rotation
 document.getElementById('rotate').addEventListener('change', () => {
     if (currentImage) {
-        console.log('Rotation changée, mise à jour des informations');
-        // Seulement mettre à jour les informations, pas l'aperçu visuel
+        console.log('Rotation changée, mise à jour des informations produit');
+        // Pour les produits, on met seulement à jour l'affichage des dimensions
         const formatSelect = document.getElementById('label_type');
         const rotateSelect = document.getElementById('rotate');
 
@@ -78,6 +68,73 @@ document.getElementById('rotate').addEventListener('change', () => {
             const currentRotation = parseInt(rotateSelect.value) || 0;
             updateDimensionInfo(widthMm, heightMm, currentRotation);
         }
+    }
+});
+
+// Gestionnaire pour le formulaire de création de produit
+document.getElementById('product-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    console.log('Soumission du formulaire produit');
+
+    const formData = new FormData(event.target);
+    const file = formData.get('files');
+
+    if (!file) {
+        showMessage('Erreur', 'Veuillez sélectionner une image');
+        return;
+    }
+
+    // Créer le produit
+    const productData = {
+        nom: formData.get('nom'),
+        description: formData.get('description') || null,
+        format_type: formData.get('label_type'),
+        rotation: parseInt(formData.get('rotate')) || 0
+    };
+
+    const apiFormData = new FormData();
+    apiFormData.append('product_json', JSON.stringify(productData));
+    apiFormData.append('file', file);
+
+    // Désactiver le bouton pendant l'envoi
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Création...';
+
+    try {
+        const response = await fetch('/api/products', {
+            method: 'POST',
+            body: apiFormData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showMessage('Succès', `Produit "${result.product.nom}" créé avec succès !`);
+            event.target.reset();
+
+            // Réinitialiser l'aperçu
+            currentImage = null;
+            currentFile = null;
+            originalImageDimensions = null;
+            updatePreview();
+
+            // Recharger la liste des produits
+            loadProducts();
+
+            // Rediriger après un délai
+            setTimeout(() => {
+                // Pas de redirection pour rester sur la page produits
+            }, 2000);
+        } else {
+            showMessage('Erreur', result.error || 'Erreur inconnue');
+        }
+    } catch (error) {
+        showMessage('Erreur', 'Erreur réseau');
+        console.error('Erreur réseau:', error);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Créer le produit';
     }
 });
 
@@ -107,8 +164,6 @@ function updatePreview() {
             height: tempImg.naturalHeight
         };
 
-        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
-
         // Calculer les dimensions en millimètres - hauteur toujours = format sélectionné
         const formatValue = parseInt(formatSelect.value);
         const heightMm = formatValue; // Hauteur fixe selon le format
@@ -120,10 +175,10 @@ function updatePreview() {
         const imgElement = document.createElement('img');
         imgElement.src = currentImage;
         imgElement.className = 'preview-image';
-        // Pas de rotation visuelle dans l'aperçu
+        // Pas de rotation visuelle dans l'aperçu produit
         imgElement.style.transform = 'rotate(0deg)';
 
-        // Calculer la taille d'affichage pour que l'image tienne dans le canvas
+        // Calculer la taille d'affichage
         const canvasWidth = 380;
         const canvasHeight = 280;
 
@@ -131,7 +186,7 @@ function updatePreview() {
         const displayWidthPx = widthMm * (300 / 25.4);  // Convertir mm vers pixels
         const displayHeightPx = heightMm * (300 / 25.4);
 
-        // Calculer l'échelle pour adapter au canvas
+        // Calculer l'échelle
         const scaleX = canvasWidth / displayWidthPx;
         const scaleY = canvasHeight / displayHeightPx;
         const scale = Math.min(scaleX, scaleY, 1);
@@ -143,7 +198,7 @@ function updatePreview() {
 
         previewCanvas.appendChild(imgElement);
 
-        // Mettre à jour les informations de dimension (sans tenir compte de la rotation pour l'affichage)
+        // Mettre à jour les informations de dimension
         const currentRotation = parseInt(rotateSelect.value) || 0;
         updateDimensionInfo(widthMm, heightMm, currentRotation);
     };
@@ -153,9 +208,6 @@ function updatePreview() {
 
 // Fonction pour mettre à jour les informations de dimensions
 function updateDimensionInfo(widthMm, heightMm, rotation) {
-    const formatSelect = document.getElementById('label_type');
-    const rotateSelect = document.getElementById('rotate');
-
     if (widthMm === '--' || heightMm === '--') {
         document.getElementById('current-format').textContent = 'Format: --mm';
         document.getElementById('rotation-info').textContent = 'Rotation: 0°';
@@ -163,6 +215,8 @@ function updateDimensionInfo(widthMm, heightMm, rotation) {
         return;
     }
 
+    // Trouver le format actuel sélectionné
+    const formatSelect = document.getElementById('label_type');
     const labelConfig = LABEL_CONFIGS[formatSelect.value];
 
     document.getElementById('current-format').textContent = `Format: ${labelConfig.name}`;
@@ -176,77 +230,75 @@ function updateDimensionInfo(widthMm, heightMm, rotation) {
     document.getElementById('actual-size').textContent = `Taille réelle: ${displayWidth.toFixed(1)} x ${displayHeight.toFixed(1)} mm`;
 }
 
-// Fonction pour réinitialiser l'aperçu
-function resetPreview() {
-    currentImage = null;
-    currentFile = null;
-    originalImageDimensions = null;
-    updatePreview();
+// Fonction pour charger la liste des produits
+async function loadProducts() {
+    try {
+        const response = await fetch('/api/products');
+        const products = await response.json();
+
+        const productsList = document.getElementById('products-list');
+        productsList.innerHTML = '';
+
+        if (products.length === 0) {
+            productsList.innerHTML = '<p>Aucun produit enregistré pour le moment.</p>';
+            return;
+        }
+
+        products.forEach(product => {
+            const productCard = document.createElement('div');
+            productCard.className = 'product-card';
+            productCard.innerHTML = `
+                <div class="product-image">
+                    <img src="/uploads/${product.image_path}" alt="${product.nom}" onerror="this.src='/static/placeholder.png'">
+                </div>
+                <div class="product-info">
+                    <h3>${product.nom}</h3>
+                    <p class="product-format">${product.format_type}mm - ${product.rotation}°</p>
+                    ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
+                </div>
+                <div class="product-actions">
+                    <button onclick="useProduct(${product.id})" class="btn btn-secondary">Utiliser</button>
+                    <button onclick="deleteProduct(${product.id})" class="btn btn-danger">Supprimer</button>
+                </div>
+            `;
+            productsList.appendChild(productCard);
+        });
+
+    } catch (error) {
+        console.error('Erreur lors du chargement des produits:', error);
+        document.getElementById('products-list').innerHTML = '<p>Erreur lors du chargement des produits.</p>';
+    }
 }
 
-// Gestion du formulaire de création de tâche
-document.getElementById('job-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
+// Fonction pour utiliser un produit (redirige vers création de tâche avec le produit sélectionné)
+function useProduct(productId) {
+    // Rediriger vers la page de création de tâche avec l'ID du produit
+    window.location.href = `/new-task?product=${productId}`;
+}
 
-    const formData = new FormData(event.target);
-    const files = formData.getAll('files');
-
-    if (files.length === 0) {
-        showMessage('Erreur', 'Sélectionnez une image');
+// Fonction pour supprimer un produit
+async function deleteProduct(productId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
         return;
     }
 
-    // Créer la tâche
-    const taskData = {
-        nom_client: "Tâche simple",
-        reference_externe: null,
-        taches: [{
-            type: "BATCH",
-            quantite: parseInt(formData.get('quantity')) || 1,
-            config: {
-                image_path: files[0].name,
-                cut: formData.get('cut') === 'on',
-                label_type: formData.get('label_type') || '62',
-                rotate: document.getElementById('rotate').value || '0'
-            }
-        }]
-    };
-
-    const apiFormData = new FormData();
-    apiFormData.append('command_json', JSON.stringify(taskData));
-    files.forEach(file => apiFormData.append('files', file));
-
-    // Désactiver le bouton pendant l'envoi
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Création...';
-
     try {
-        const response = await fetch('/api/jobs', {
-            method: 'POST',
-            body: apiFormData
+        const response = await fetch(`/api/products/${productId}`, {
+            method: 'DELETE'
         });
 
-        const result = await response.json();
-
         if (response.ok) {
-            showMessage('Succès', `Tâche créée (ID: ${result.job_id})`);
-            event.target.reset();
-            resetPreview();
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
+            showMessage('Succès', 'Produit supprimé');
+            loadProducts(); // Recharger la liste
         } else {
-            showMessage('Erreur', result.error || 'Erreur inconnue');
+            const result = await response.json();
+            showMessage('Erreur', result.error || 'Erreur lors de la suppression');
         }
     } catch (error) {
         showMessage('Erreur', 'Erreur réseau');
         console.error('Erreur réseau:', error);
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Créer la tâche';
     }
-});
+}
 
 // Fonction pour afficher les messages
 function showMessage(title, message) {
@@ -261,77 +313,4 @@ document.getElementById('message-close').addEventListener('click', () => {
     document.getElementById('message-overlay').style.display = 'none';
 });
 
-// Fonction pour initialiser le sélecteur de type de tâche
-function initTaskTypeSelector() {
-    const taskOptions = document.querySelectorAll('.task-type-option');
-
-    taskOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            // Retirer la classe selected de toutes les options
-            taskOptions.forEach(opt => opt.classList.remove('selected'));
-
-            // Ajouter la classe selected à l'option cliquée
-            option.classList.add('selected');
-
-            // Mettre à jour le type sélectionné
-            selectedTaskType = option.dataset.type;
-
-            // Afficher/masquer les sections appropriées
-            const productSelection = document.querySelector('.product-selection');
-            const previewSection = document.getElementById('preview-section');
-            const jobForm = document.getElementById('job-form');
-
-            if (selectedTaskType === 'product') {
-                productSelection.classList.add('show');
-                previewSection.style.display = 'none';
-                jobForm.style.display = 'none';
-            } else {
-                productSelection.classList.remove('show');
-                previewSection.style.display = 'block';
-                jobForm.style.display = 'block';
-            }
-
-            console.log('Type de tâche changé:', selectedTaskType);
-        });
-    });
-}
-
-// Fonction pour charger un produit depuis l'URL (quand on vient de la page produits)
-async function loadProductForTask(productId) {
-    try {
-        const response = await fetch(`/api/products/${productId}`);
-        if (response.ok) {
-            const product = await response.json();
-
-            // Changer automatiquement le type vers custom (puisque c'est un produit)
-            selectedTaskType = 'custom';
-
-            // Remplir le formulaire avec les données du produit
-            document.getElementById('label_type').value = product.format_type;
-            document.getElementById('rotate').value = product.rotation;
-
-            // Charger l'image du produit
-            const imgResponse = await fetch(`/uploads/${product.image_path}`);
-            if (imgResponse.ok) {
-                const blob = await imgResponse.blob();
-                const file = new File([blob], product.image_path, { type: blob.type });
-
-                // Simuler la sélection de fichier
-                const fileInput = document.getElementById('files');
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-
-                // Déclencher le chargement de l'image
-                fileInput.dispatchEvent(new Event('change'));
-            }
-
-            console.log('Produit chargé pour la tâche:', product.nom);
-        }
-    } catch (error) {
-        console.error('Erreur lors du chargement du produit:', error);
-        showMessage('Erreur', 'Impossible de charger le produit sélectionné');
-    }
-}
-
-console.log('Script create_task.js chargé');
+console.log('Script products.js chargé');
