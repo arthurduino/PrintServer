@@ -9,17 +9,89 @@ const LABEL_CONFIGS = {
 let currentImage = null;
 let currentFile = null;
 
+// Fonction pour mettre à jour les contours de marges et indicateurs de dimensions
+function updatePreviewLayout(format, rotation) {
+    const previewPaper = document.getElementById('preview-canvas').parentNode;
+    const existingMargins = previewPaper.querySelector('.preview-margins');
+    if (existingMargins) {
+        existingMargins.remove();
+    }
+
+    if (format === '--') return;
+
+    const labelConfig = LABEL_CONFIGS[format];
+    const isRotated = rotation === 90 || rotation === 270;
+
+    // Dimensions utilisables après marges
+    const marginLeftRight = 1; // 1mm de chaque côté sur les bords du rouleau
+    const marginTopBottom = 1.5; // 1.5mm de chaque côté au niveau des découpes
+    const usableWidth = labelConfig.width - (2 * marginLeftRight);
+    const usableHeight = labelConfig.height - (2 * marginTopBottom);
+
+    // Dimensions effectives selon la rotation
+    const displayWidth = isRotated ? usableHeight : usableWidth;
+    const displayHeight = isRotated ? usableWidth : usableHeight;
+
+    // Créer les éléments de marges
+    const marginsContainer = document.createElement('div');
+    marginsContainer.className = 'preview-margins';
+
+    // Contour des marges (rectangle en pointillés)
+    const marginOutline = document.createElement('div');
+    marginOutline.className = 'preview-margin-outline';
+
+    // Calculer les dimensions et position du contour de marges
+    // L'image fait 400x200px, on doit centrer le contour autour d'elle
+    const canvasWidth = 400;
+    const canvasHeight = 200;
+
+    // Facteur d'échelle pour s'adapter au canvas
+    const scaleFactor = Math.min(canvasWidth / displayWidth, canvasHeight / displayHeight, 1) * 0.8; // Laisser un peu de marge
+    const outlineWidth = displayWidth * scaleFactor;
+    const outlineHeight = displayHeight * scaleFactor;
+
+    marginOutline.style.width = `${outlineWidth}px`;
+    marginOutline.style.height = `${outlineHeight}px`;
+    marginOutline.style.left = `${(canvasWidth - outlineWidth) / 2}px`;
+    marginOutline.style.top = `${(canvasHeight - outlineHeight) / 2}px`;
+
+    // Indicateurs de dimensions
+    const widthIndicator = document.createElement('div');
+    widthIndicator.className = 'dimension-indicator horizontal width';
+    widthIndicator.textContent = `${displayWidth}mm`;
+    widthIndicator.style.left = `${(canvasWidth - outlineWidth) / 2}px`;
+    widthIndicator.style.top = `${(canvasHeight - outlineHeight) / 2 - 20}px`;
+    widthIndicator.style.width = `${outlineWidth}px`;
+
+    const heightIndicator = document.createElement('div');
+    heightIndicator.className = 'dimension-indicator vertical height';
+    heightIndicator.textContent = `${displayHeight}mm`;
+    heightIndicator.style.left = `${(canvasWidth + outlineWidth) / 2 + 5}px`;
+    heightIndicator.style.top = `${(canvasHeight - outlineHeight) / 2}px`;
+    heightIndicator.style.height = `${outlineHeight}px`;
+
+    marginsContainer.appendChild(marginOutline);
+    marginsContainer.appendChild(widthIndicator);
+    marginsContainer.appendChild(heightIndicator);
+
+    previewPaper.appendChild(marginsContainer);
+}
+
 // Fonction pour mettre à jour l'aperçu
 function updatePreview() {
     const previewCanvas = document.getElementById('preview-canvas');
     const formatSelect = document.getElementById('label_type');
     const rotateSelect = document.getElementById('rotate');
 
-    // Nettoyer le canvas
+    // Nettoyer le canvas et ses éléments
     previewCanvas.innerHTML = '';
+    const existingMargins = previewCanvas.parentNode.querySelector('.preview-margins');
+    if (existingMargins) {
+        existingMargins.remove();
+    }
 
     if (!currentImage) {
-        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'étiquette sur le rouleau</span></div>';
+        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'aperçu</span></div>';
         updateDimensionInfo('--', '0');
         return;
     }
@@ -28,37 +100,9 @@ function updatePreview() {
     const img = document.createElement('img');
     img.src = currentImage;
     img.className = 'preview-image';
-
-    // Appliquer la rotation
-    const rotation = parseInt(rotateSelect.value) || 0;
-    img.style.transform = `rotate(${rotation}deg)`;
-
-    // Calculer les dimensions affichées
-    const labelConfig = LABEL_CONFIGS[formatSelect.value];
-
-    // Marges du rouleau : 1mm de chaque côté aux bords, 1.5mm aux découpes
-    const marginLeftRight = 1; // 1mm de chaque côté sur les bords du rouleau
-    const marginTopBottom = 1.5; // 1.5mm de chaque côté au niveau des découpes
-
-    // Dimensions utilisables pour l'image (après marges)
-    const imageAreaWidth = labelConfig.width - (2 * marginLeftRight);
-    const imageAreaHeight = labelConfig.height - (2 * marginTopBottom);
-
-    // Dimensions effectives selon la rotation
-    const isRotated = rotation === 90 || rotation === 270;
-    const actualImageWidth = isRotated ? imageAreaHeight : imageAreaWidth;
-    const actualImageHeight = isRotated ? imageAreaWidth : imageAreaHeight;
-
-    // Conversion en pixels pour l'affichage (à l'échelle)
-    const scaleFactor = Math.min(420 / (actualImageWidth * 10), 40 / (actualImageHeight * 10), 1); // Factor 10 pour une échelle lisible
-
-    img.style.width = `${actualImageWidth * 10 * scaleFactor}px`;
-    img.style.height = `${actualImageHeight * 10 * scaleFactor}px`;
-    img.style.maxWidth = '100%';
-    img.style.maxHeight = '100%';
-
     previewCanvas.appendChild(img);
-    updateDimensionInfo(formatSelect.value, rotation);
+    updatePreviewLayout(formatSelect.value, rotateSelect.value);
+    updateDimensionInfo(formatSelect.value, rotateSelect.value);
 }
 
 // Fonction pour mettre à jour les informations de dimension
