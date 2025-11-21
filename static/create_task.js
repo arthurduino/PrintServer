@@ -19,7 +19,7 @@ function updatePreview() {
     previewCanvas.innerHTML = '';
 
     if (!currentImage) {
-        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'aperçu</span></div>';
+        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'étiquette sur le rouleau</span></div>';
         updateDimensionInfo('--', '0');
         return;
     }
@@ -35,26 +35,25 @@ function updatePreview() {
 
     // Calculer les dimensions affichées
     const labelConfig = LABEL_CONFIGS[formatSelect.value];
-    const dpi = 300; // Supposons 300 DPI
-    const pixelsPerMm = dpi / 25.4; // Conversion mm vers pixels
-    const displayWidth = labelConfig.width * pixelsPerMm;
-    const displayHeight = labelConfig.height * pixelsPerMm;
 
-    // Pour les rotations de 90° et 270°, échanger largeur/hauteur
+    // Marges du rouleau : 1mm de chaque côté aux bords, 1.5mm aux découpes
+    const marginLeftRight = 1; // 1mm de chaque côté sur les bords du rouleau
+    const marginTopBottom = 1.5; // 1.5mm de chaque côté au niveau des découpes
+
+    // Dimensions utilisables pour l'image (après marges)
+    const imageAreaWidth = labelConfig.width - (2 * marginLeftRight);
+    const imageAreaHeight = labelConfig.height - (2 * marginTopBottom);
+
+    // Dimensions effectives selon la rotation
     const isRotated = rotation === 90 || rotation === 270;
-    const actualDisplayWidth = isRotated ? displayHeight : displayWidth;
-    const actualDisplayHeight = isRotated ? displayWidth : displayHeight;
+    const actualImageWidth = isRotated ? imageAreaHeight : imageAreaWidth;
+    const actualImageHeight = isRotated ? imageAreaWidth : imageAreaHeight;
 
-    // Mettre à l'échelle pour l'aperçu (adapter l'image au canvas)
-    const canvasWidth = 380; // Largeur disponible dans le canvas (moins les marges)
-    const canvasHeight = 280; // Hauteur disponible dans le canvas (moins les marges)
+    // Conversion en pixels pour l'affichage (à l'échelle)
+    const scaleFactor = Math.min(420 / (actualImageWidth * 10), 40 / (actualImageHeight * 10), 1); // Factor 10 pour une échelle lisible
 
-    const scaleX = canvasWidth / actualDisplayWidth;
-    const scaleY = canvasHeight / actualDisplayHeight;
-    const scaleFactor = Math.min(scaleX, scaleY, 1); // Ne pas agrandir l'image
-
-    img.style.width = `${actualDisplayWidth * scaleFactor}px`;
-    img.style.height = `${actualDisplayHeight * scaleFactor}px`;
+    img.style.width = `${actualImageWidth * 10 * scaleFactor}px`;
+    img.style.height = `${actualImageHeight * 10 * scaleFactor}px`;
     img.style.maxWidth = '100%';
     img.style.maxHeight = '100%';
 
@@ -80,10 +79,16 @@ function updateDimensionInfo(format, rotation) {
     rotationInfoSpan.textContent = `Rotation: ${rotation}°`;
 
     if (labelConfig) {
+        // Dimensions utilisables après marges
+        const marginLeftRight = 1; // 1mm de chaque côté sur les bords du rouleau
+        const marginTopBottom = 1.5; // 1.5mm de chaque côté au niveau des découpes
+        const usableWidth = labelConfig.width - (2 * marginLeftRight);
+        const usableHeight = labelConfig.height - (2 * marginTopBottom);
+
         const isRotated = rotation === 90 || rotation === 270;
-        const width = isRotated ? labelConfig.height : labelConfig.width;
-        const height = isRotated ? labelConfig.width : labelConfig.height;
-        actualSizeSpan.textContent = `Taille réelle: ${width} x ${height} mm`;
+        const width = isRotated ? usableHeight : usableWidth;
+        const height = isRotated ? usableWidth : usableHeight;
+        actualSizeSpan.textContent = `Espace image: ${width} x ${height} mm`;
     }
 }
 

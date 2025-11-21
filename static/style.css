@@ -321,20 +321,85 @@ progress::-webkit-progress-value {
     flex-direction: column;
     align-items: center;
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+/* Bande représentant le rouleau d'étiquettes */
+.preview-roll {
+    position: absolute;
+    width: 450px;
+    height: 60px;
+    background: linear-gradient(90deg, #e0e0e0 0%, #d0d0d0 50%, #e0e0e0 100%);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #c0c0c0;
+}
+
+.preview-roll::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 50%;
+    height: 2px;
+    background: #b0b0b0;
+    transform: translateY(-50%);
+    border-radius: 1px;
+}
+
+/* Indicateurs de position sur le rouleau */
+.preview-position-indicators {
+    position: absolute;
+    width: 450px;
+    height: 80px;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.preview-position-indicators::before {
+    content: '← Rouleau d\'étiquettes';
+    position: absolute;
+    left: -80px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    font-size: 0.8rem;
+    color: #666;
+    font-weight: bold;
+}
+
+.preview-position-indicators::after {
+    content: 'Étiquette →';
+    position: absolute;
+    right: -60px;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
+    font-size: 0.8rem;
+    color: #666;
+    font-weight: bold;
 }
 
 .preview-canvas {
-    width: 400px;
-    height: 300px;
-    border: 1px solid #bdc3c7;
-    background: white;
+    width: 450px;
+    height: 80px;
+    background: transparent;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: 15px;
     position: relative;
+    box-shadow: none;
+    z-index: 10;
+}
+
+.preview-canvas:hover {
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .preview-placeholder {
@@ -436,9 +501,29 @@ progress::-webkit-progress-value {
         padding: 15px;
     }
 
+    .preview-roll {
+        width: 280px;
+        height: 40px;
+    }
+
+    .preview-position-indicators {
+        width: 280px;
+        height: 50px;
+    }
+
+    .preview-position-indicators::before {
+        left: -50px;
+        font-size: 0.7rem;
+    }
+
+    .preview-position-indicators::after {
+        right: -50px;
+        font-size: 0.7rem;
+    }
+
     .preview-canvas {
         width: 280px;
-        height: 200px;
+        height: 50px;
     }
 
     .dimension-info {
