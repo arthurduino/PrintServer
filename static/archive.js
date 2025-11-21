@@ -10,7 +10,17 @@ async function loadCompletedJobs() {
         const response = await fetch('/api/jobs');
         const jobs = await response.json();
 
-        const completedJobs = jobs.filter(job => job.statut === 'COMPLETED');
+        // Debug info
+        const debugEl = document.getElementById('debug-info');
+        debugEl.innerHTML = `
+            Total tâches: ${jobs.length}<br>
+            Tâches DONE: ${jobs.filter(j => j.statut === 'DONE').length}<br>
+            Tâches PROCESSING: ${jobs.filter(j => j.statut === 'PROCESSING').length}<br>
+            Tâches PENDING: ${jobs.filter(j => j.statut === 'PENDING').length}<br>
+            Statuts: ${[...new Set(jobs.map(j => j.statut))].join(', ')}
+        `;
+
+        const completedJobs = jobs.filter(job => job.statut === 'DONE');
 
         if (completedJobs.length === 0) {
             document.getElementById('completed-jobs').innerHTML = '<p>Aucune tâche terminée</p>';
