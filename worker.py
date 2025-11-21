@@ -163,21 +163,21 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
         data_size = len(data_to_send) if isinstance(data_to_send, bytes) else len(str(data_to_send))
 
         # Détection d'étiquettes longues/heavy (>3cm de long avec bcp de noirs)
-        is_heavy_print = data_size > 1000  # Taille seuil pour gros transferts
+        is_heavy_print = data_size > 5000  # Taille seuil pour gros transferts
         if is_heavy_print:
-            print(f"Gros transfert détecté : {data_size} bytes pour {img_path}")
+            print(f"Gros transfert détecté : {data_size} bytes pour {image_path}")
 
         try:
             printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)  # Envoi avec adaptation timeout
         except Exception as e:
             # Gestion spéciale pour les erreurs USB lors d'images volumineuses
             if 'array index out of range' in str(e).lower() or 'Timeout' in str(e):
-                print(f"Nouvelle tentative après erreur USB avec l'image {img_path} ({data_size} bytes)...")
+                print(f"Nouvelle tentative après erreur USB avec l'image {image_path} ({data_size} bytes)...")
                 time.sleep(3)  # Pause plus longue pour les gros fichiers
                 try:
                     printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)
                 except Exception as retry_e:
-                    print(f"Échec permanent après retry pour {img_path}: {retry_e}")
+                    print(f"Échec permanent après retry pour {image_path}: {retry_e}")
                     raise retry_e
             else:
                 raise e
