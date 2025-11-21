@@ -26,16 +26,14 @@
 
             <!-- Preview Section -->
             <div class="preview-section">
-                <h3>Aperçu de l'étiquette</h3>
+                <h3>Aperçu de l'impression</h3>
                 <div class="preview-container">
                     <div class="preview-paper">
-                        <!-- Canvas d'aperçu -->
                         <div id="preview-canvas" class="preview-canvas">
                             <div class="preview-placeholder">
                                 <span>Sélectionnez une image pour voir l'aperçu</span>
                             </div>
                         </div>
-
                         <div class="preview-info">
                             <div class="dimension-info">
                                 <span id="current-format">Format: --mm</span>
@@ -70,13 +68,14 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="rotate">Rotation:</label>
-                        <select id="rotate" name="rotate" required>
+                        <label for="rotate">Rotation (auto):</label>
+                        <select id="rotate" name="rotate" disabled required>
                             <option value="0">0°</option>
                             <option value="90">90°</option>
                             <option value="180">180°</option>
                             <option value="270">270°</option>
                         </select>
+                        <small class="form-hint">La rotation est déterminée automatiquement selon l'orientation de l'image</small>
                     </div>
                     <div class="form-group">
                         <label for="cut">
