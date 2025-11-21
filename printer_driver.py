@@ -197,6 +197,15 @@ class PrinterDriver:
             # Envoi bloquant des données
             self.ep_out.write(data)
             print("Données envoyées, attente de fin d'impression...")
+
+            # Délai initial pour laisser l'imprimante assimiler les gros transferts
+            if is_heavy_print:
+                initial_delay = len(data) / 10000  # ~0.5s par 5KB de données, minimum 3s
+                initial_delay = max(initial_delay, 3.0)
+                print(f"Délai initial de {initial_delay:.1f}s pour gros transfert ({len(data)} bytes)")
+                time.sleep(initial_delay)
+            else:
+                time.sleep(0.5)  # Délai normal
             # Attente bloquante tant que l'imprimante est occupée
             # Ajouter un délai pour éviter la saturation USB avec les gros fichiers
             wait_count = 0
