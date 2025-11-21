@@ -3,235 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Print Server Dashboard</title>
+    <title>Print Server</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <div class="dashboard-container">
-        <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-content">
-                <h1><i class="fas fa-print"></i> Serveur d'Impression</h1>
-                <div class="header-status">
-                    <div id="printer-status-badge" class="status-badge">
-                        <div class="status-indicator"></div>
-                        <span>Chargement...</span>
-                    </div>
+    <div class="container">
+        <!-- Status -->
+        <div class="section status-section">
+            <div class="status-display">
+                <div class="status-left">
+                    <h1>🖨️ Serveur d'Impression</h1>
+                    <div id="printer-status">Chargement...</div>
+                </div>
+                <div class="status-right">
+                    <button id="pause-btn" class="btn btn-secondary">Pause</button>
+                    <button id="resume-btn" class="btn btn-primary">Resume</button>
                 </div>
             </div>
-        </header>
+        </div>
 
-        <!-- Main Dashboard -->
-        <main class="dashboard-main">
-            <!-- Top Row: Status and Controls -->
-            <div class="dashboard-row">
-                <!-- Printer Status Card -->
-                <div class="card status-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-circle-info"></i> État de l'Imprimante</h2>
-                    </div>
-                    <div class="card-body">
-                        <div id="printer-status" class="printer-status"></div>
-                        <div id="printer-phase" class="printer-phase"></div>
-                    </div>
-                </div>
-
-                <!-- Worker Controls Card -->
-                <div class="card controls-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-sliders-h"></i> Contrôles</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="control-buttons">
-                            <button id="pause-btn" class="btn btn-warning">
-                                <i class="fas fa-pause"></i> Pause
-                            </button>
-                            <button id="resume-btn" class="btn btn-success">
-                                <i class="fas fa-play"></i> Reprendre
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        <!-- Current Job -->
+        <div class="section job-section">
+            <h2>Tâche en cours</h2>
+            <div id="current-job" class="job-display">
+                <p>Aucune tâche en cours</p>
             </div>
+        </div>
 
-            <!-- Middle Row: Current Job and Queue -->
-            <div class="dashboard-row">
-                <!-- Current Job Card -->
-                <div class="card current-job-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-cog fa-spin"></i> Commande en Cours</h2>
-                    </div>
-                    <div class="card-body">
-                        <div id="current-job" class="current-job-content">
-                            <div class="no-job">
-                                <i class="fas fa-inbox"></i>
-                                <p>Aucune commande en cours</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Job Queue Card -->
-                <div class="card queue-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-list-ul"></i> File d'Attente</h2>
-                    </div>
-                    <div class="card-body">
-                        <div id="job-list" class="job-queue">
-                            <div class="no-queue">
-                                <i class="fas fa-check-circle"></i>
-                                <p>File d'attente vide</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- Job Queue -->
+        <div class="section queue-section">
+            <h2>File d'attente</h2>
+            <div id="job-list" class="queue-list">
+                <p>File vide</p>
             </div>
+        </div>
 
-            <!-- Bottom Row: Job Creation -->
-            <div class="dashboard-row">
-                <div class="card job-creation-card full-width">
-                    <div class="card-header">
-                        <h2><i class="fas fa-plus-circle"></i> Créer une Nouvelle Commande</h2>
+        <!-- Create Job -->
+        <div class="section create-section">
+            <h2>Créer une tâche</h2>
+            <form id="job-form" class="simple-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="files">Image:</label>
+                        <input type="file" id="files" name="files" accept="image/*" required>
                     </div>
-                    <div class="card-body">
-                        <form id="job-form" class="job-form">
-                            <!-- Client Information -->
-                            <div class="form-section">
-                                <h3><i class="fas fa-user"></i> Informations Client</h3>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="nom_client">
-                                            <i class="fas fa-building"></i> Nom du Client
-                                        </label>
-                                        <input type="text" id="nom_client" name="nom_client" required
-                                               placeholder="Entrez le nom du client">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="reference_externe">
-                                            <i class="fas fa-hashtag"></i> Référence Externe
-                                        </label>
-                                        <input type="text" id="reference_externe" name="reference_externe"
-                                               placeholder="Référence commande (optionnel)">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Task Configuration -->
-                            <div class="form-section">
-                                <h3><i class="fas fa-tasks"></i> Configuration des Tâches</h3>
-
-                                <!-- Task Type Selector -->
-                                <div class="task-type-selector">
-                                    <label><i class="fas fa-layer-group"></i> Type de Tâche</label>
-                                    <div class="radio-group">
-                                        <label class="radio-label">
-                                            <input type="radio" name="task_type" value="BATCH" checked>
-                                            <span class="radio-text">Batch (même image répétée)</span>
-                                        </label>
-                                        <label class="radio-label">
-                                            <input type="radio" name="task_type" value="SERIES">
-                                            <span class="radio-text">Série (images différentes)</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <!-- File Upload -->
-                                <div class="form-group file-upload-group">
-                                    <label id="file-label">
-                                        <i class="fas fa-upload"></i> Sélectionner l'image
-                                    </label>
-                                    <input type="file" id="files" name="files" accept="image/*" required multiple>
-                                    <div class="file-info">
-                                        <span id="file-count">Aucun fichier sélectionné</span>
-                                    </div>
-                                </div>
-
-                                <!-- Print Parameters -->
-                                <div class="print-parameters">
-                                    <h4><i class="fas fa-cogs"></i> Paramètres d'Impression</h4>
-
-                                    <div class="form-row">
-                                        <div class="form-group">
-                                            <label for="quantity">
-                                                <i class="fas fa-copy"></i> Quantité
-                                            </label>
-                                            <input type="number" id="quantity" name="quantity" value="1" min="1" required>
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label for="label_type">
-                                                <i class="fas fa-tag"></i> Type d'Étiquette
-                                            </label>
-                                            <select id="label_type" name="label_type" required>
-                                                <option value="62" selected>62mm</option>
-                                                <option value="48">48mm</option>
-                                                <option value="30">30mm</option>
-                                                <option value="12">12mm</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label for="rotate">
-                                                <i class="fas fa-undo"></i> Rotation
-                                            </label>
-                                            <select id="rotate" name="rotate" required>
-                                                <option value="0" selected>0°</option>
-                                                <option value="90">90°</option>
-                                                <option value="180">180°</option>
-                                                <option value="270">270°</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div class="form-group checkbox-group">
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" id="cut" name="cut" checked>
-                                            <span class="checkbox-text">
-                                                <i class="fas fa-cut"></i> Découpe automatique après impression
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Preview Section -->
-                            <div class="form-section">
-                                <h3><i class="fas fa-eye"></i> Aperçu de la Commande</h3>
-                                <div id="job-preview" class="job-preview">
-                                    <div class="preview-placeholder">
-                                        <i class="fas fa-magic"></i>
-                                        <p>Remplissez le formulaire pour voir l'aperçu</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Submit Button -->
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary btn-large">
-                                    <i class="fas fa-rocket"></i> Créer la Commande
-                                </button>
-                                <button type="reset" class="btn btn-secondary">
-                                    <i class="fas fa-eraser"></i> Réinitialiser
-                                </button>
-                            </div>
-                        </form>
+                    <div class="form-group">
+                        <label for="quantity">Quantité:</label>
+                        <input type="number" id="quantity" name="quantity" value="1" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="label_type">Format:</label>
+                        <select id="label_type" name="label_type" required>
+                            <option value="62">62mm</option>
+                            <option value="48">48mm</option>
+                            <option value="30">30mm</option>
+                        </select>
                     </div>
                 </div>
-            </div>
-        </main>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rotate">Rotation:</label>
+                        <select id="rotate" name="rotate" required>
+                            <option value="0">0°</option>
+                            <option value="90">90°</option>
+                            <option value="180">180°</option>
+                            <option value="270">270°</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cut">
+                            <input type="checkbox" id="cut" name="cut" checked> Découpe
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary full-width">
+                            Créer la tâche
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <!-- Success/Error Messages -->
+    <!-- Message overlay -->
     <div id="message-overlay" class="message-overlay" style="display: none;">
         <div class="message-content">
-            <div class="message-icon">
-                <i class="fas fa-check-circle"></i>
-            </div>
             <h3 id="message-title">Succès</h3>
-            <p id="message-text">Commande créée avec succès</p>
-            <button id="message-close" class="btn btn-primary">Fermer</button>
+            <p id="message-text">Tâche créée</p>
+            <button id="message-close" class="btn btn-primary">OK</button>
         </div>
     </div>
 
