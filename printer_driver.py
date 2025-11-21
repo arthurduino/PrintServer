@@ -72,29 +72,15 @@ class PrinterDriver:
         print("Connexion USB établie avec succès")
 
     def get_status(self) -> Dict:
-        """Envoie la commande ESC i S et lit la réponse de 32 octets.
+        """Envoie la commande ESC i S et lit la réponse de 32 octets de manière bloquante.
 
         Retourne un dict avec l'état de l'imprimante.
         """
         cmd = b'\x1B\x69\x53'  # ESC i S
         self.ep_out.write(cmd)
 
-        # Lit 32 octets de réponse avec gestion timeout
-        try:
-            response = self.ep_in.read(32, timeout=5000)  # Timeout 5 secondes
-        except usb.core.USBError as e:
-            # En cas de timeout ou erreur USB
-            print(f"Erreur USB lors de la lecture du status: {e}")
-            # Retourne un statut d'erreur par défaut
-            return {
-                'is_busy': False,
-                'paper_empty': False,
-                'cover_open': False,
-                'is_cooling': False,
-                'phase': 'ERROR',
-                'raw_phase': 0,
-                'is_error': True
-            }
+        # Lit 32 octets de réponse de manière bloquante
+        response = self.ep_in.read(32)
 
         # Parsing selon la spécification Brother (adapté pour QL-700)
         is_busy = (response[18] & 0x01) != 0  # bit 0 de l'octet 18
@@ -128,32 +114,75 @@ class PrinterDriver:
             'is_error': False  # Cooling n'est pas une erreur bloquante
         }
 
-    def send_and_wait(self, data: bytes):
-        """Envoie les données binaires (raster) et attend que l'impression soit terminée.
+    def reconnect_usb(self):
+        """Reconnecte à l'imprimante après une déconnexion, nettoie les ressources et réinitialise."""
+        print("Tentative de reconnexion à l'imprimante après erreur USB...")
+        try:
+            # Libère les ressources de l'ancienne connexion
+            if self.dev:
+                usb.util.dispose_resources(self.dev)
+                self.dev = None
+            # Recherche à nouveau l'imprimante
+            self.dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+            if self.dev is None:
+                raise Exception("Imprimante Brother QL-700 non retrouvée après déconnexion.")
+            print("Imprimante retrouvée, reconfiguration USB...")
+            # Détache kernel driver si nécessaire
+            try:
+                if self.dev.is_kernel_driver_active(0):
+                    self.dev.detach_kernel_driver(0)
+            except (AttributeError, NotImplementedError):
+                pass
+            # Configure la nouvelle connexion
+            self.dev.set_configuration()
+            cfg = self.dev.get_active_configuration()
+            intf = cfg[(0,0)]
+            self.ep_out = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+            )
+            self.ep_in = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            )
+            if not self.ep_out or not self.ep_in:
+                raise Exception("Endpoints USB non trouvés après reconnexion.")
+            # Envoie commande d'initialisation pour nettoyer le buffer de l'imprimante
+            self.ep_out.write(b'\x1B\x40')  # ESC @ - Initialize printer
+            print("Reconnexion USB réussie et imprimante initialisée.")
+        except Exception as e:
+            raise Exception(f"Échec de la reconnexion USB: {e}")
 
-        Lève une exception si papier vide détecté ou timeout.
+    def send_and_wait(self, data: bytes):
+        """Envoie les données binaires (raster) et attend que l'impression soit terminée de manière bloquante.
+
+        Gère automatiquement les déconnexions USB avec reconnexion.
+        Lève une exception si papier vide détecté.
         """
         try:
-            # Envoie toutes les données en une seule fois avec timeout
-            self.ep_out.write(data, timeout=10000)  # Timeout 10 secondes pour l'envoi
-
-            start_time = time.time()
-            max_wait_time = 60.0  # Timeout après 60 secondes pour l'attente
-
-            # Boucle d'attente tant que busy
+            # Envoi bloquant des données
+            self.ep_out.write(data)
+            # Attente bloquante tant que l'imprimante est occupée
             while True:
                 status = self.get_status()
-                if status.get('is_error', False):
-                    raise Exception("Erreur USB lors de la vérification du status de l'imprimante")
                 if not status['is_busy']:
                     break
                 if status['paper_empty']:
                     raise Exception("Papier vide détecté pendant l'impression")
-                if time.time() - start_time > max_wait_time:
-                    raise Exception("Timeout en attente de la fin de l'impression")
-                time.sleep(0.1)  # Vérification toutes les 100ms
         except usb.core.USBError as e:
-            raise Exception(f"Erreur USB lors de l'envoi des données d'impression: {e}") from e
+            print(f"Erreur USB détectée: {e}")
+            # Tente reconnexion et retry
+            self.reconnect_usb()
+            try:
+                # Retry l'envoi avec la nouvelle connexion
+                self.ep_out.write(data)
+                while True:
+                    status = self.get_status()
+                    if not status['is_busy']:
+                        break
+                    if status['paper_empty']:
+                        raise Exception("Papier vide détecté après reconnexion")
+                print("Reprise de l'impression réussie après reconnexion.")
+            except usb.core.USBError as e2:
+                raise Exception(f"Échec permanent de l'impression après reconnexion: {e2}")
 
     def disconnect(self):
         """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""

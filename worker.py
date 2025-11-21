@@ -66,8 +66,7 @@ def _worker_loop(printer: PrinterDriver):
                 print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
             elif 'Erreur USB' in str(e):
                 print(f"Tâche {task_id} échouée : problème USB - vérifier câble et permissions")
-            # Pause prolongée en cas d'erreur
-            time.sleep(10)
+            # Continuer immédiatement au lieu de dormir (auto-recovery gérera la reconnexion)
 
 def _get_next_pending_task() -> Optional[tuple]:
     """Récupère la prochaine tâche PENDING triée par ID commande + ordre."""
