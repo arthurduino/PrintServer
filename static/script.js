@@ -1,13 +1,15 @@
 // Mise à jour périodique des données
 setInterval(async () => {
     try {
-        // Mise à jour du status de l'imprimante avec fréquence adaptée
-        const statusResponse = await fetch('/api/printer/status');
-        const statusData = await statusResponse.json();
-        updatePrinterStatus(statusData);
+        // Mise à jour du status de l'imprimante très occasionnellement
+        if (Math.random() < 0.1) {  // Seulement 10% du temps = ~20 secondes en moyenne
+            const statusResponse = await fetch('/api/printer/status');
+            const statusData = await statusResponse.json();
+            updatePrinterStatus(statusData);
+        }
 
-        // Mise à jour des jobs/tâches moins fréquemment pour éviter surcharge
-        if (Math.random() < 0.3) {  // ~30% de chance à chaque intervalle = ~3 secondes en moyenne
+        // Mise à jour des jobs/tâches très rarement
+        if (Math.random() < 0.05) {  // ~5% du temps = ~40 secondes en moyenne
             const jobsResponse = await fetch('/api/jobs');
             const jobs = await jobsResponse.json();
             updateCurrentJob(jobs);
@@ -17,7 +19,7 @@ setInterval(async () => {
         console.error('Erreur mise à jour:', error);
         document.getElementById('printer-status').textContent = 'Erreur de connexion';
     }
-}, 2000);  // Intervalle doublé pour réduire la charge USB
+}, 5000);  // Intervalle de 5 secondes pour minimiser drastiquement les pollings USB
 
 // Mise à jour du statut de l'imprimante
 function updatePrinterStatus(statusData) {

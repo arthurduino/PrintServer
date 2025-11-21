@@ -160,16 +160,22 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
     qty_done = 0
     for _ in range(qty_tot):
         data_to_send = binary_data.data if hasattr(binary_data, 'data') else binary_data
+        data_size = len(data_to_send) if isinstance(data_to_send, bytes) else len(str(data_to_send))
+
+        # Détection d'étiquettes longues/heavy (>3cm de long avec bcp de noirs)
+        is_heavy_print = data_size > 1000  # Taille seuil pour gros transferts
+        if is_heavy_print:
+            print(f"Gros transfert détecté : {data_size} bytes pour {img_path}")
 
         try:
-            printer.send_and_wait(data_to_send)  # Envoi via notre driver bas niveau avec timeout
+            printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)  # Envoi avec adaptation timeout
         except Exception as e:
             # Gestion spéciale pour les erreurs USB lors d'images volumineuses
             if 'array index out of range' in str(e).lower() or 'Timeout' in str(e):
-                print(f"Nouvelle tentative après erreur USB avec l'image {img_path}...")
-                time.sleep(2)  # Pause avant retry
+                print(f"Nouvelle tentative après erreur USB avec l'image {img_path} ({data_size} bytes)...")
+                time.sleep(3)  # Pause plus longue pour les gros fichiers
                 try:
-                    printer.send_and_wait(data_to_send)
+                    printer.send_and_wait(data_to_send, is_heavy_print=is_heavy_print)
                 except Exception as retry_e:
                     print(f"Échec permanent après retry pour {img_path}: {retry_e}")
                     raise retry_e
@@ -178,9 +184,12 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, config: dict, qty_
 
         qty_done += 1
         _update_task_progress(task_id, qty_done)
-        # Délai supplémentaire pour éviter saturation avec gros volumes
+        # Délai supplémentaire pour éviter saturation avec gros volumes, plus long pour heavy prints
         if qty_done % 5 == 0:  # Tous les 5 exemplaires
-            time.sleep(0.1)
+            delay = 0.3 if is_heavy_print else 0.1  # Délaí adapté
+            time.sleep(delay)
+        elif is_heavy_print:
+            time.sleep(0.05)  # Micro-délai entre chaque étiquette heavy
 
 def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes."""
