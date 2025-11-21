@@ -68,6 +68,18 @@ async def get_index():
     with open("templates/index.html") as f:
         return f.read()
 
+@app.get("/new-task", response_class=HTMLResponse)
+async def get_new_task():
+    """Sert la page de création de nouvelle tâche."""
+    with open("templates/new_task.html") as f:
+        return f.read()
+
+@app.get("/archive", response_class=HTMLResponse)
+async def get_archive():
+    """Sert la page d'archive des tâches terminées."""
+    with open("templates/archive.html") as f:
+        return f.read()
+
 @app.get("/api/jobs")
 async def get_jobs():
     """Renvoie la liste des commandes avec leurs tâches imbriquées."""

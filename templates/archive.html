@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archive - Print Server</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <h1 class="nav-title">🖨️ Serveur d'Impression</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Accueil</a>
+                <a href="/new-task" class="nav-link">Nouvelle tâche</a>
+                <a href="/archive" class="nav-link active">Archive</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Completed Jobs -->
+        <div class="section archive-section">
+            <h2>Archive des tâches terminées</h2>
+            <div id="completed-jobs" class="archive-list">
+                <p>Chargement...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/archive.js"></script>
+</body>
+</html>

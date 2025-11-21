@@ -7,12 +7,24 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <h1 class="nav-title">🖨️ Serveur d'Impression</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link active">Accueil</a>
+                <a href="/new-task" class="nav-link">Nouvelle tâche</a>
+                <a href="/archive" class="nav-link">Archive</a>
+            </div>
+        </div>
+    </nav>
+
     <div class="container">
         <!-- Status -->
         <div class="section status-section">
             <div class="status-display">
                 <div class="status-left">
-                    <h1>🖨️ Serveur d'Impression</h1>
+                    <h2>État du système</h2>
                     <div id="printer-status">Chargement...</div>
                 </div>
                 <div class="status-right">
@@ -36,52 +48,6 @@
             <div id="job-list" class="queue-list">
                 <p>File vide</p>
             </div>
-        </div>
-
-        <!-- Create Job -->
-        <div class="section create-section">
-            <h2>Créer une tâche</h2>
-            <form id="job-form" class="simple-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="files">Image:</label>
-                        <input type="file" id="files" name="files" accept="image/*" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="quantity">Quantité:</label>
-                        <input type="number" id="quantity" name="quantity" value="1" min="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="label_type">Format:</label>
-                        <select id="label_type" name="label_type" required>
-                            <option value="62">62mm</option>
-                            <option value="48">48mm</option>
-                            <option value="30">30mm</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="rotate">Rotation:</label>
-                        <select id="rotate" name="rotate" required>
-                            <option value="0">0°</option>
-                            <option value="90">90°</option>
-                            <option value="180">180°</option>
-                            <option value="270">270°</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="cut">
-                            <input type="checkbox" id="cut" name="cut" checked> Découpe
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <button type="submit" class="btn btn-primary full-width">
-                            Créer la tâche
-                        </button>
-                    </div>
-                </div>
-            </form>
         </div>
     </div>
 

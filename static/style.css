@@ -1,3 +1,43 @@
+/* Navigation */
+.nav {
+    background: #2c3e50;
+    color: white;
+    padding: 1rem 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.nav-links {
+    display: flex;
+    gap: 20px;
+}
+
+.nav-link {
+    color: #ecf0f1;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.nav-link:hover, .nav-link.active {
+    background: #3498db;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -209,6 +249,48 @@ progress::-webkit-progress-value {
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 0.9rem;
+}
+
+/* Archive items */
+.completed-item {
+    padding: 15px;
+    border-bottom: 1px solid #ecf0f1;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.completed-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.completed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.status-completed {
+    background: #27ae60;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.completed-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.archive-list {
+    min-height: 200px;
 }
 
 /* Message overlay */
