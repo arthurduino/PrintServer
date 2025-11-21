@@ -119,7 +119,7 @@ document.getElementById('upload-form').addEventListener('submit', async (event) 
         reference_externe: "#TEST",
         taches: [{
             type: "BATCH",
-            quantite: 10,
+            quantite: 1,
             config: {
                 image_path: files[0].name,  // Le nom du fichier uploadé
                 cut: true,
