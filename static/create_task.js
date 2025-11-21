@@ -81,8 +81,8 @@ function updatePreview() {
         // Déterminer si l'image est paysage ou portrait
         const isLandscape = tempImg.naturalWidth >= tempImg.naturalHeight;
 
-        // Sélectionner automatiquement la rotation
-        const autoRotation = isLandscape ? 0 : 90;
+        // Sélectionner automatiquement la rotation (inversée : paysages tournés à 90°)
+        const autoRotation = isLandscape ? 90 : 0;
         rotateSelect.value = autoRotation.toString();
 
         console.log('Orientation:', isLandscape ? 'paysage' : 'portrait', '→ Rotation:', autoRotation + '°');
@@ -107,13 +107,13 @@ function updatePreview() {
         let displayWidth, displayHeight;
 
         if (isLandscape) {
-            // Paysage avec rotation 0°
-            displayWidth = widthMm;
-            displayHeight = heightMm;
-        } else {
-            // Portrait avec rotation 90° - échanger les dimensions
+            // Paysage avec rotation 90° - échanger les dimensions
             displayWidth = heightMm; // Après rotation 90°, height devient width
             displayHeight = widthMm; // Après rotation 90°, width devient height
+        } else {
+            // Portrait avec rotation 0°
+            displayWidth = widthMm;
+            displayHeight = heightMm;
         }
 
         console.log('Affichage final:', displayWidth.toFixed(1), 'x', displayHeight.toFixed(1), 'mm pour canvas', canvasWidth, 'x', canvasHeight);
