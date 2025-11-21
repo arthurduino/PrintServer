@@ -182,6 +182,11 @@ def _process_series_task(printer: PrinterDriver, task_id: int, config: dict, qty
     if len(images) != qty_tot:
         raise ValueError(f"Nombre d'images ({len(images)}) ne correspond pas à quantité totale ({qty_tot})")
 
+    # Vérifier que tous les éléments de la liste images sont des strings valides
+    for i, img_path in enumerate(images):
+        if not isinstance(img_path, str) or not img_path.strip():
+            raise ValueError(f"Image à l'index {i} invalide: {img_path}")
+
     qty_done = 0
     for img_path in images:
         # Configuration des options par défaut pour chaque image

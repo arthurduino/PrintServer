@@ -82,6 +82,10 @@ class PrinterDriver:
         # Lit 32 octets de réponse de manière bloquante
         response = self.ep_in.read(32)
 
+        # Vérifier que nous avons bien reçu 32 octets
+        if len(response) != 32:
+            raise Exception(f"Réponse USB incomplète: {len(response)} octets reçus au lieu de 32")
+
         # Parsing selon la spécification Brother (adapté pour QL-700)
         is_busy = (response[18] & 0x01) != 0  # bit 0 de l'octet 18
 
