@@ -376,6 +376,13 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     # Lire 32 octets de réponse statut
                     res = dev.read(ep_in, 32, timeout=1000)
 
+                    # Vérifier que la réponse contient au moins 32 octets
+                    if len(res) < 32:
+                        print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Réponse statut USB incomplète: {len(res)} octets reçus au lieu de 32")
+                        polling_attempts += 1
+                        time.sleep(1.0)
+                        continue
+
                     # ANALYSE CORRECTE DES OCTETS SELON COMMAND REF v6.0
                     status_type = res[18]       # Page 16 - Status Type
                     phase_type = res[19]        # Page 16 - Phase Type
