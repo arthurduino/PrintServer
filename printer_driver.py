@@ -97,15 +97,59 @@ class PrinterDriver:
         print("Connexion USB établie avec succès")
 
     def get_status(self) -> Dict:
-        """Envoie la commande ESC i S et lit la réponse de 32 octets de manière bloquante.
+        """Envoie la commande ESC i S et lit la réponse sans connexion persistante."""
+        # Ouvrir/fermer une connexion fresh pour éviter de monopoliser l'imprimante
+        dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+        if dev is None:
+            print("⚠️ Imprimante introuvable pour statut - connexion temporaire impossible")
+            return {
+                'is_busy': False,
+                'paper_empty': False,
+                'cover_open': False,
+                'is_cooling': False,
+                'phase': 'DISCONNECTED',
+                'raw_phase': 0,
+                'is_error': True
+            }
 
-        Retourne un dict avec l'état de l'imprimante.
-        """
-        cmd = b'\x1B\x69\x53'  # ESC i S
-        self.ep_out.write(cmd)
+        try:
+            # Détacher kernel si actif
+            if dev.is_kernel_driver_active(0):
+                dev.detach_kernel_driver(0)
 
-        # Lit 32 octets de réponse de manière bloquante
-        response = self.ep_in.read(32)
+            # Configuration temporaire
+            dev.set_configuration()
+            cfg = dev.get_active_configuration()
+            intf = cfg[(0,0)]
+
+            # Trouver les endpoints
+            ep_out = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+            )
+            ep_in = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            )
+
+            if not ep_out or not ep_in:
+                return {
+                    'is_busy': False,
+                    'paper_empty': False,
+                    'cover_open': False,
+                    'is_cooling': False,
+                    'phase': 'ENDPOINT_ERROR',
+                    'raw_phase': 0,
+                    'is_error': True
+                }
+
+            # Envoyer la commande
+            ep_out.write(b'\x1B\x69\x53', timeout=5000)  # ESC i S
+
+            # Lire réponse
+            response = ep_in.read(32, timeout=5000)
+
+        finally:
+            # 🔥 CLÉ DE LA STABILITÉ : relâcher l'imprimante pour que d'autres processus puissent l'utiliser
+            usb.util.dispose_resources(dev)
 
         # Vérifier que la réponse fait bien 32 octets (évite array index out of range)
         if len(response) < 32:
