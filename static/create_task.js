@@ -34,11 +34,6 @@ class CreateTaskApp {
         document.getElementById('select-product').addEventListener('change', (e) => {
             this.handleProductSelection(e.target.value);
         });
-
-        // Détection automatique de rotation pour les images en portrait
-        document.getElementById('files').addEventListener('change', (e) => {
-            this.handleImageSelection(e.target.files[0]);
-        });
     }
 
     async loadProducts() {
@@ -65,7 +60,7 @@ class CreateTaskApp {
         this.data.products.forEach(product => {
             const option = document.createElement('option');
             option.value = product.id;
-            option.textContent = `${product.nom} (${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°)`;
+            option.textContent = `${product.nom} (${product.format_type}mm)`;
             option.dataset.product = JSON.stringify(product);
             select.appendChild(option);
         });
@@ -107,9 +102,9 @@ class CreateTaskApp {
 
         // Mettre à jour les données
         document.getElementById('preview-image').src = `/uploads/${product.image_path}`;
-        document.getElementById('preview-image').style.transform = `rotate(${product.rotation - 90}deg)`;
+        document.getElementById('preview-image').style.transform = `rotate(0deg)`;
         document.getElementById('preview-name').textContent = product.nom;
-        document.getElementById('preview-format').textContent = `${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°`;
+        document.getElementById('preview-format').textContent = `${product.format_type}mm`;
         document.getElementById('preview-description').textContent = product.description || 'Aucune description';
 
         // Ajuster les champs du formulaire
@@ -126,58 +121,21 @@ class CreateTaskApp {
         const customImageSection = document.getElementById('custom-image-section');
         const fileInput = document.getElementById('files');
         const labelTypeSelect = document.getElementById('label_type');
-        const rotateSelect = document.getElementById('rotate');
-        const rotateFormGroup = rotateSelect.closest('.form-group');
 
         if (productSelected) {
             customImageSection.style.display = 'none';
             fileInput.required = false;
             labelTypeSelect.required = false;
-            rotateSelect.required = false;
-            // Masquer aussi la ligne du rotate quand un produit est sélectionné
-            if (rotateFormGroup) rotateFormGroup.style.display = 'none';
         } else {
             customImageSection.style.display = 'flex';
             fileInput.required = true;
             labelTypeSelect.required = true;
-            rotateSelect.required = true;
-            // Réafficher la ligne du rotate quand pas de produit sélectionné
-            if (rotateFormGroup) rotateFormGroup.style.display = 'block';
         }
     }
 
     showError(message) {
         console.error('❌', message);
         alert(message);
-    }
-
-    // Détection automatique de rotation pour les images en portrait
-    async handleImageSelection(file) {
-        if (!file) return;
-
-        try {
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-
-            img.onload = () => {
-                // Nettoyer l'URL pour éviter les fuites mémoire
-                URL.revokeObjectURL(url);
-
-                // Pour l'aperçu : images paysages = 0° (droite), images portraits = 90° (rotaté)
-                if (img.height > img.width) {
-                    document.getElementById('rotate').value = '90';
-                    console.log('📏 Image portrait détectée - rotation automatique à 90° pour aperçu');
-                } else {
-                    // Image paysage : ne pas appliquer de rotation sur l'aperçu (rester droite)
-                    document.getElementById('rotate').value = '0';
-                    console.log('🖼️ Image paysage détectée - pas de rotation pour aperçu');
-                }
-            };
-
-            img.src = url;
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'analyse de l\'image:', error);
-        }
     }
 }
 
@@ -221,7 +179,7 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
                 image_path: imagePath,
                 cut: true,  // Toujours activée
                 label_type: selectedProductId ? parseInt(product.format_type) : parseInt(formData.get('label_type') || '62'),
-                rotate: selectedProductId ? parseInt(product.rotation) : parseInt(formData.get('rotate') || '90'),
+                rotate: 90,  // Toujours appliquer 90° de rotation
                 product_id: selectedProductId ? parseInt(selectedProductId) : null
             }
         }]

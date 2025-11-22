@@ -204,7 +204,7 @@ function searchProducts(event) {
                     </div>
                     <div class="search-result-info">
                         <div class="search-result-name">${p.nom}</div>
-                        <div class="search-result-details">${p.format_type}mm - Rotation ${p.rotation}°</div>
+                        <div class="search-result-details">${p.format_type}mm</div>
                         ${p.description ? `<div class="search-result-desc">${p.description}</div>` : ''}
                     </div>
                 </div>
@@ -262,7 +262,7 @@ function updateCommandProducts() {
             </div>
             <div class="command-product-info">
                 <h4>${product.nom}</h4>
-                <p>${product.format_type}mm - Rotation ${product.rotation}°</p>
+                <p>${product.format_type}mm</p>
                 ${product.description ? `<p class="small-text">${product.description}</p>` : ''}
             </div>
             <div class="command-product-controls">

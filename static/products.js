@@ -25,11 +25,6 @@ class ProductApp {
     }
 
     bindFormEvents() {
-        // Détection automatique de rotation pour les images en portrait
-        document.getElementById('product-files').addEventListener('change', (e) => {
-            this.handleImageSelection(e.target.files[0]);
-        });
-
         document.getElementById('product-form').addEventListener('submit', async (event) => {
             event.preventDefault();
             console.log('📝 Soumission formulaire produit');
@@ -47,7 +42,7 @@ class ProductApp {
                 nom: formData.get('nom'),
                 description: formData.get('description') || null,
                 format_type: formData.get('label_type'),
-                rotation: parseInt(formData.get('rotate')) || 0
+                rotation: 90 // Toujours appliquer une rotation de 90° par rapport au fichier original
             };
 
             const apiFormData = new FormData();
@@ -115,11 +110,11 @@ class ProductApp {
             productCard.className = 'product-card';
             productCard.innerHTML = `
                 <div class="product-image">
-                    <img src="/uploads/${product.image_path}" alt="${product.nom}" style="transform: rotate(${product.rotation - 90}deg);">
+                    <img src="/uploads/${product.image_path}" alt="${product.nom}" style="transform: rotate(0deg);">
                 </div>
                 <div class="product-info">
                     <h3>${product.nom}</h3>
-                    <p class="product-format">${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°</p>
+                    <p class="product-format">${product.format_type}mm - 0°</p>
                     ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                 </div>
                 <div class="product-actions">
@@ -168,34 +163,6 @@ class ProductApp {
     showError(message) {
         console.error('❌', message);
         alert(message);
-    }
-
-    // Détection automatique de rotation pour les images en portrait
-    async handleImageSelection(file) {
-        if (!file) return;
-
-        try {
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-
-            img.onload = () => {
-                // Nettoyer l'URL pour éviter les fuites mémoire
-                URL.revokeObjectURL(url);
-
-                // Si l'image est en portrait (hauteur > largeur), définir rotation à 90°
-                if (img.height > img.width) {
-                    document.getElementById('product-rotate').value = '90';
-                    console.log('📏 Image portrait détectée - rotation automatique à 90°');
-                } else {
-                    // Garder la rotation par défaut (0°) pour les images paysage
-                    document.getElementById('product-rotate').value = '0';
-                }
-            };
-
-            img.src = url;
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'analyse de l\'image:', error);
-        }
     }
 }
 

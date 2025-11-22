@@ -147,7 +147,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         'copies': 1,  # On gère les copies dans la boucle
         'model': MODEL,
         'label': str(config.get('label_type', '62')),
-        'rotate': str(config.get('rotate', '0')),
+        'rotate': '90',  # Toujours appliquer une rotation de 90° par rapport au fichier original
         'print_script': None,
         # Options spéciales pour gros fichiers sombres
         'compress': True,  # Activer la compression
@@ -257,7 +257,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
             'cut': config.get('cut', True),
             'model': MODEL,
             'label': config.get('label_type', '62'),
-            'rotate': config.get('rotate', '0'),
+            'rotate': '90',  # Toujours appliquer une rotation de 90° par rapport au fichier original
             'print_script': None,
         }
 
