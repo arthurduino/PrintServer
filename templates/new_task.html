@@ -32,8 +32,14 @@
                 <!-- Section Produit -->
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="select-product">Produit (optionnel):</label>
-                        <select id="select-product" name="select-product">
+                        <label for="product-search">Produit (optionnel):</label>
+                        <input type="text" id="product-search" placeholder="Rechercher un produit..." autocomplete="off">
+                        <div id="product-search-results" class="search-results" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <select id="select-product" name="select-product" style="display: none;">
                             <option value="">Sélectionner un produit existant...</option>
                         </select>
                     </div>

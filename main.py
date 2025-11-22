@@ -323,24 +323,52 @@ async def resume_worker():
 
 @app.get("/api/printer/status")
 async def get_printer_status():
-    """Renvoie l'état actuel de l'imprimante via une requête USB rapide."""
+    """Renvoie l'état détaillé actuel de l'imprimante avec tous les codes de statut."""
     if not printer:
-        return {"status": "Disconnected", "detail": "Imprimante non initialisée"}
+        return {"status": "Disconnected", "detail": "Imprimante non initialisée", "is_error": True}
 
     try:
         status = printer.get_status()
+
+        # Retourner TOUTES les informations du driver pour précision maximale
+        result = {
+            "status": "Ready", # Valeur par défaut
+            "detail": "",
+            "phase": status['phase'],
+            "raw_phase": status['raw_phase'],
+            "is_busy": status['is_busy'],
+            "is_cooling": status['is_cooling'],
+            "paper_empty": status['paper_empty'],
+            "cover_open": status['cover_open'],
+            "is_error": status['is_error']
+        }
+
+        # Déterminer le statut principal basé sur les flags les plus prioritaires
         if status['cover_open']:
-            return {"status": "Cover Open", "detail": "Couvercle ouvert", "phase": status['phase']}
+            result["status"] = "Cover Open"
+            result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
         elif status['paper_empty']:
-            return {"status": "Paper Empty", "detail": "Papier vide", "phase": status['phase']}
+            result["status"] = "Paper Empty"
+            result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
         elif status['phase'] == 'COOLING':
-            return {"status": "Cooling", "detail": "Refroidissement en cours", "phase": status['phase']}
+            result["status"] = "Cooling"
+            result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
         elif status['is_busy']:
-            return {"status": "Busy", "detail": "Impression en cours", "phase": status['phase']}
+            result["status"] = "Busy"
+            result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
         else:
-            return {"status": "Ready", "detail": "Prêt à imprimer", "phase": status['phase']}
+            result["status"] = "Ready"
+            result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
+
+        return result
+
     except Exception as e:
-        return {"status": "Error", "detail": str(e), "phase": "UNKNOWN"}
+        return {
+            "status": "Error",
+            "detail": f"Erreur de communication: {str(e)}",
+            "phase": "UNKNOWN",
+            "is_error": True
+        }
 
 # API Routes pour les produits (autocollants enregistrés)
 

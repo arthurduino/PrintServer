@@ -1,3 +1,9 @@
+// État global pour les mises à jour différentielles
+let currentJobsState = {
+    currentJob: null,
+    pendingTasks: []
+};
+
 // Mise à jour périodique adaptative selon l'activité d'impression
 async function updateInterface(delay = 1000) {
     console.log(`🔄 [UPDATE] Mise à jour programmée dans ${delay}ms`);
@@ -9,23 +15,32 @@ async function updateInterface(delay = 1000) {
             // Mise à jour du statut de l'imprimante en parallèle
             console.log('🔄 [UPDATE] Récupération du statut de l\'imprimante...');
             const statusResponse = await fetch('/api/printer/status');
-            console.log(`🔄 [UPDATE] Statut HTTP: ${statusResponse.status}`);
 
+            if (!statusResponse.ok) {
+                throw new Error(`Statut erreur HTTP: ${statusResponse.status}`);
+            }
+
+            console.log(`🔄 [UPDATE] Statut HTTP: ${statusResponse.status}`);
             const statusData = await statusResponse.json();
             console.log(`🔄 [UPDATE] Données statut reçues:`, statusData);
 
-            updatePrinterStatus(statusData);
-
+            // Récupération des tâches - si ça échoue, ne pas mettre à jour l'interface
             console.log('🔄 [UPDATE] Récupération des tâches...');
             const jobsResponse = await fetch('/api/jobs');
-            console.log(`🔄 [UPDATE] Jobs HTTP: ${jobsResponse.status}`);
 
+            if (!jobsResponse.ok) {
+                throw new Error(`Jobs erreur HTTP: ${jobsResponse.status}`);
+            }
+
+            console.log(`🔄 [UPDATE] Jobs HTTP: ${jobsResponse.status}`);
             const jobs = await jobsResponse.json();
             console.log(`🔄 [UPDATE] ${jobs.length} tâches reçues`);
 
-            updateCurrentJob(jobs);
+            // TOUTES les requêtes ont réussi - on peut maintenant mettre à jour l'interface
+            updatePrinterStatus(statusData);
+            updateCurrentJobDiff(jobs);
             console.log('🔄 [UPDATE] Tâches disponibles:', jobs);
-            updateJobList(jobs);
+            updateJobListDiff(jobs);
 
             // Programmer la prochaine mise à jour : plus fréquent si impression en cours
             const isPrinting = statusData.status === 'Busy' || jobs.some(job => job.statut === 'PROCESSING');
@@ -34,9 +49,10 @@ async function updateInterface(delay = 1000) {
             updateInterface(nextDelay);
 
         } catch (error) {
-            console.error('❌ [UPDATE] Erreur mise à jour:', error);
-            // En cas d'erreur, attendre 2 secondes avant de réessayer
-            updateInterface(2000);
+            console.error('❌ [UPDATE] Erreur de requête API - Interface conservée telle quelle:', error.message);
+            // ⚠️ IMPORTANT: En cas d'erreur, NE PAS modifier l'interface
+            // Attendre plus longtemps avant de réessayer (pour éviter spam)
+            updateInterface(3000);
         }
     }, delay);
 }
@@ -47,40 +63,45 @@ document.addEventListener('DOMContentLoaded', () => {
     updateInterface();
 });
 
-// Mise à jour du statut de l'imprimante
+// Mise à jour détaillée du statut de l'imprimante
 function updatePrinterStatus(statusData) {
     const statusEl = document.getElementById('printer-status');
 
-    if (statusData.status === 'Ready') {
-        statusEl.textContent = 'Status: Prêt à imprimer';
-        statusEl.style.color = '#2ecc71';
-    } else if (statusData.status === 'Cooling') {
-        statusEl.textContent = 'Status: Refroidissement';
-        statusEl.style.color = '#f39c12';
-        document.getElementById('pause-btn').disabled = true;
-        document.getElementById('resume-btn').disabled = true;
-    } else if (statusData.status === 'Busy') {
-        statusEl.textContent = 'Status: Impression en cours';
-        statusEl.style.color = '#3498db';
-    } else if (statusData.status === 'Error' || statusData.is_error) {
-        // Gestion spéciale pour les erreurs USB/réseau vs erreurs normales
-        if (statusData.phase === 'COOLING') {
-            statusEl.textContent = 'Status: Refroidissement en cours';
-            statusEl.style.color = '#f39c12';
-        } else {
-            statusEl.textContent = 'Status: Erreur de communication USB';
-            statusEl.style.color = '#e74c3c';
-        }
+    if (statusData.status === 'Disconnected') {
+        statusEl.innerHTML = `
+            <div style="color: #e74c3c; font-weight: bold;">❌ IMPRIMANTE DÉCONNECTÉE</div>
+            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail || 'Aucune connexion établie'}</div>
+        `;
+    } else if (statusData.is_error) {
+        statusEl.innerHTML = `
+            <div style="color: #e74c3c; font-weight: bold;">⚠️ ERREUR DE COMMUNICATION</div>
+            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail || 'Erreur inconnue'}</div>
+            <div style="font-size: 0.8em; margin-top: 3px; color: #888;">
+                Phase: ${statusData.phase || 'UNKNOWN'}
+            </div>
+        `;
     } else {
-        statusEl.textContent = `Status: ${statusData.detail || statusData.status}`;
-        statusEl.style.color = '#e74c3c';
+        // Construire un statut détaillé avec toutes les informations
+        const mainStatus = getMainStatusDisplay(statusData);
+        const flagsDisplay = buildFlagsDisplay(statusData);
+        const codesDisplay = statusData.raw_phase !== undefined ?
+            `<div style="font-size: 0.8em; margin-top: 3px; color: #666; font-family: monospace;">
+                Code brut: ${statusData.raw_phase}
+            </div>` : '';
+
+        statusEl.innerHTML = `
+            <div style="font-weight: bold;">${mainStatus}</div>
+            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail}</div>
+            ${flagsDisplay}
+            ${codesDisplay}
+        `;
     }
 
-    // Gérer les boutons selon le statut
+    // Gérer les boutons selon le statut et les erreurs
     const pauseBtn = document.getElementById('pause-btn');
     const resumeBtn = document.getElementById('resume-btn');
 
-    if (statusData.status === 'Cooling') {
+    if (statusData.is_error || statusData.status === 'Disconnected' || statusData.status === 'Cooling') {
         pauseBtn.disabled = true;
         resumeBtn.disabled = true;
     } else {
@@ -89,7 +110,94 @@ function updatePrinterStatus(statusData) {
     }
 }
 
-// Mise à jour de la tâche en cours
+// Génère l'affichage principal du statut avec couleur appropriée
+function getMainStatusDisplay(statusData) {
+    const status = statusData.status;
+    const color = getStatusColor(status);
+
+    let icon = '🔴';
+    if (status === 'Ready') icon = '🟢';
+    else if (status === 'Busy') icon = '🔵';
+    else if (status === 'Cooling') icon = '🟠';
+    else if (status === 'Cover Open') icon = '🟡';
+    else if (status === 'Paper Empty') icon = '🟡';
+
+    return `<span style="color: ${color};">${icon} ${status.toUpperCase()}</span>`;
+}
+
+// Détermine la couleur selon le statut
+function getStatusColor(status) {
+    switch (status) {
+        case 'Ready': return '#2ecc71';      // Vert
+        case 'Busy': return '#3498db';       // Bleu
+        case 'Cooling': return '#f39c12';    // Orange
+        case 'Cover Open': return '#f1c40f'; // Jaune
+        case 'Paper Empty': return '#f1c40f'; // Jaune
+        default: return '#e74c3c';           // Rouge
+    }
+}
+
+// Construit l'affichage des flags détaillés
+function buildFlagsDisplay(statusData) {
+    const flags = [];
+
+    // Flags de statut prioritaires
+    if (statusData.cover_open) {
+        flags.push('<span style="color: #f1c40f;">📖 Couvercle ouvert</span>');
+    }
+    if (statusData.paper_empty) {
+        flags.push('<span style="color: #f1c40f;">📄 Papier vide</span>');
+    }
+    if (statusData.is_cooling) {
+        flags.push('<span style="color: #f39c12;">🌡️ Refroidissement actif</span>');
+    }
+    if (statusData.is_busy) {
+        flags.push('<span style="color: #3498db;">🖨️ Imprimante active</span>');
+    }
+
+    if (flags.length === 0) {
+        return '<div style="font-size: 0.8em; margin-top: 3px; color: #888;">• Aucune condition spéciale</div>';
+    }
+
+    return `
+        <div style="font-size: 0.8em; margin-top: 3px;">
+            ${flags.join(' • ')}
+        </div>
+    `;
+}
+
+// Mise à jour différentielle de la tâche en cours
+function updateCurrentJobDiff(jobs) {
+    const newCurrentJob = jobs.find(job => job.statut === 'PROCESSING');
+
+    // Comparer avec l'état actuel
+    const currentJobChanged = !currentJobsState.currentJob ||
+                             !newCurrentJob ||
+                             (currentJobsState.currentJob && currentJobsState.currentJob.id !== (newCurrentJob ? newCurrentJob.id : null));
+
+    // Si pas de changement, vérifier si la tâche en cours d'impression a progressé
+    if (!currentJobChanged && currentJobsState.currentJob) {
+        const currentlyPrintingTask = currentJobsState.currentJob.taches?.find(task => task.statut === 'IN_PROGRESS');
+        const newCurrentlyPrintingTask = newCurrentJob?.taches?.find(task => task.statut === 'IN_PROGRESS');
+
+        // Mise à jour seulement si progression ou tâche différente
+        if (currentlyPrintingTask && newCurrentlyPrintingTask &&
+            (currentlyPrintingTask.id === newCurrentlyPrintingTask.id) &&
+            (currentlyPrintingTask.quantite_faite === newCurrentlyPrintingTask.quantite_faite)) {
+            console.log('🔄 [CURRENTJOB] Pas de changement détecté dans la tâche en cours');
+            return;
+        }
+    }
+
+    // Mise à jour nécessaire, utiliser la logique d'origine
+    updateCurrentJob(jobs);
+
+    // Mettre à jour l'état
+    currentJobsState.currentJob = newCurrentJob ? { ...newCurrentJob } : null;
+    console.log('🔄 [CURRENTJOB] Mise à jour effectuée');
+}
+
+// Mise à jour de la tâche en cours (fonction originale refactorisée)
 function updateCurrentJob(jobs) {
     const jobDisplay = document.getElementById('current-job');
     const currentJob = jobs.find(job => job.statut === 'PROCESSING');
@@ -147,7 +255,192 @@ function updateCurrentJob(jobs) {
     }
 }
 
-// Mise à jour de la file d'attente
+// Mise à jour différentielle de la file d'attente
+function updateJobListDiff(jobs) {
+    const queueList = document.getElementById('job-list');
+
+    // Collecter toutes les tâches individuelles en attente
+    const newPendingTasks = [];
+    jobs.filter(job => job.statut === 'PENDING').forEach(job => {
+        job.taches.forEach(task => {
+            // Pour les tâches d'un job PENDING, toutes sont considérées comme PENDING sauf si déjà complétées
+            const taskIsPending = task.quantite_faite < task.quantite_totale;
+
+            if (taskIsPending) {
+                newPendingTasks.push({
+                    jobId: job.id,
+                    clientName: job.nom_client,
+                    taskId: task.id,
+                    taskType: task.type_tache,
+                    quantity: task.quantite_totale,
+                    progress: task.quantite_faite || 0,  // Pour la reprise automatique
+                    date: job.date_creation,
+                    config: task.config
+                });
+            }
+        });
+    });
+
+    // Comparer avec l'état actuel pour détecter les changements
+    const changes = compareTaskLists(currentJobsState.pendingTasks, newPendingTasks);
+
+    // Si des changements détectés
+    if (changes.hasChanges) {
+        console.log('🔄 [JOBLIST] Changements détectés:', changes);
+
+        // Appliquer seulement les changements nécessaires
+        applyQueueChanges(queueList, changes, newPendingTasks);
+
+        // Mettre à jour l'état
+        currentJobsState.pendingTasks = newPendingTasks.map(task => ({ ...task }));
+        console.log('🔄 [JOBLIST] Mise à jour différentielle effectuée');
+    } else {
+        console.log('🔄 [JOBLIST] Aucune modification détectée dans la file d\'attente');
+    }
+}
+
+// Comparer deux listes de tâches et identifier les changements
+function compareTaskLists(oldTasks, newTasks) {
+    const changes = {
+        hasChanges: false,
+        added: [],
+        removed: [],
+        updated: [],
+        orderChanged: false
+    };
+
+    // Créer des maps pour une recherche rapide
+    const oldTaskMap = new Map(oldTasks.map(task => [task.taskId, task]));
+    const newTaskMap = new Map(newTasks.map(task => [task.taskId, task]));
+
+    // Détecter les tâches supprimées
+    oldTasks.forEach((oldTask, index) => {
+        if (!newTaskMap.has(oldTask.taskId)) {
+            changes.removed.push({ taskId: oldTask.taskId, index });
+            changes.hasChanges = true;
+        }
+    });
+
+    // Détecter les tâches ajoutées et mises à jour
+    newTasks.forEach((newTask, index) => {
+        const oldTask = oldTaskMap.get(newTask.taskId);
+
+        if (!oldTask) {
+            // Nouvelle tâche
+            changes.added.push({ task: newTask, index });
+            changes.hasChanges = true;
+        } else {
+            // Vérifier si la tâche a changé
+            if (hasTaskChanged(oldTask, newTask)) {
+                changes.updated.push({ taskId: newTask.taskId, oldIndex: oldTasks.findIndex(t => t.taskId === newTask.taskId), newIndex: index });
+                changes.hasChanges = true;
+            }
+        }
+    });
+
+    // Vérifier si l'ordre a changé (si pas d'ajouts/suppressions)
+    if (!changes.hasChanges && oldTasks.length === newTasks.length) {
+        changes.orderChanged = !oldTasks.every((task, index) => task.taskId === newTasks[index].taskId);
+        changes.hasChanges = changes.orderChanged;
+    }
+
+    return changes;
+}
+
+// Vérifier si une tâche a changé de manière significative
+function hasTaskChanged(oldTask, newTask) {
+    return oldTask.progress !== newTask.progress ||
+           oldTask.quantity !== newTask.quantity ||
+           oldTask.taskType !== newTask.taskType;
+}
+
+// Appliquer les changements à la liste des tâches
+function applyQueueChanges(queueList, changes, newTasks) {
+    // Si trop de changements ou file vide/vide devenue, faire une mise à jour complète
+    if (changes.added.length + changes.removed.length + changes.updated.length > newTasks.length / 2 ||
+        newTasks.length === 0 || currentJobsState.pendingTasks.length === 0) {
+        console.log('🔄 [JOBLIST] Trop de changements, mise à jour complète');
+
+        // Créer des objets job simulés pour la mise à jour complète
+        const simulatedJobs = newTasks.map(task => ({
+            statut: 'PENDING',
+            taches: [{
+                id: task.taskId,
+                quantite_totale: task.quantity,
+                quantite_faite: task.progress || 0,
+                type_tache: task.taskType,
+                config: task.config
+            }]
+        }));
+
+        updateJobList(simulatedJobs);
+        return;
+    }
+
+    // Appliquer les suppressions
+    changes.removed.sort((a, b) => b.index - a.index).forEach(({ taskId }) => {
+        const element = queueList.querySelector(`[data-task-id="${taskId}"]`);
+        if (element) {
+            element.remove();
+        }
+    });
+
+    // Appliquer les mises à jour
+    changes.updated.forEach(({ taskId, oldIndex, newIndex }) => {
+        const element = queueList.querySelector(`[data-task-id="${taskId}"]`);
+        const task = newTasks.find(t => t.taskId === taskId);
+
+        if (element && task) {
+            element.outerHTML = createTaskHTML(task);
+        }
+    });
+
+    // Appliquer les ajouts
+    changes.added.forEach(({ task, index }) => {
+        const taskHTML = createTaskHTML(task);
+        const referenceElement = queueList.children[index];
+
+        if (referenceElement) {
+            referenceElement.insertAdjacentHTML('beforebegin', taskHTML);
+        } else {
+            queueList.insertAdjacentHTML('beforeend', taskHTML);
+        }
+    });
+
+    // Si pas de tâches, afficher "File vide"
+    if (newTasks.length === 0) {
+        queueList.innerHTML = '<p>File vide</p>';
+    }
+}
+
+// Créer le HTML pour une tâche (extrait de updateJobList)
+function createTaskHTML(task) {
+    const isRecovery = task.progress && task.progress > 0;
+    const taskProgressText = isRecovery ? ` (${task.progress}/${task.quantity})` : '';
+
+    return `
+    <div class="queue-item ${isRecovery ? 'recovery-task' : ''}" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
+        <div class="task-preview">
+            ${task.config && task.config.image_path ?
+                `<img src="/uploads/${task.config.image_path}" alt="Aperçu tâche #${task.taskId}" class="task-thumbnail" onerror="this.style.display='none'">` :
+                '<div class="no-preview">📄</div>'
+            }
+        </div>
+        <div class="info">
+            <strong>Tâche #${task.taskId}${isRecovery ? ' 🔄' : ''}</strong> - ${task.clientName}
+            <br><small>${task.quantity} exemplaires${taskProgressText} - ${task.taskType} - ${new Date(task.date).toLocaleString()}</small>
+            ${task.config && task.config.image_path ? `<br><small class="image-name">${task.config.image_path}</small>` : ''}
+            ${isRecovery ? `<br><small class="recovery-notice">Reprise automatique - ${task.progress} déjà imprimé(s)</small>` : ''}
+        </div>
+        <div class="queue-actions">
+            <span class="quantity">${task.quantity}</span>
+            <button class="delete-btn" onclick="deleteTask(${task.taskId})" title="Supprimer cette tâche">🗑️</button>
+        </div>
+    </div>
+    `;
+}
+
+// Mise à jour de la file d'attente (fonction originale, maintenant utilisée seulement pour mise à jour complète)
 function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
 
