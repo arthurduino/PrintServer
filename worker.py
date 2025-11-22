@@ -6,6 +6,7 @@ import os
 from typing import Optional
 from printer_driver import PrinterDriver
 from database import DB_FILE, parse_config_json
+from usb_lock import printer_lock
 
 # Import de la fonction d'alerte email depuis main
 try:
