@@ -78,107 +78,85 @@ class USBListener(threading.Thread):
         self.messages_processed = 0
 
     def run(self):
-        """Boucle principale avec connexion persistante synchronisée."""
-        print("👂 [LISTENER] Démarrage avec connexion persistante synchronisée")
+        """Boucle principale avec requêtes périodiques Brother (solution robuste)."""
+        print("👂 [LISTENER] Démarrage avec requêtes périodiques Brother (standard)")
 
-        # Requête initiale
+        # Requête initiale pour vérifier l'état de départ
         self._send_initial_status_request()
 
-        # Boucle principale d'écoute persistante
+        last_status_time = 0
+
+        # Boucle principale de surveillance périodique
         while self.running:
             try:
-                # Vérifier si nous devons activer l'écoute
-                if not self.listening_active and not printer_state.listener_listening:
-                    self._initialize_persistent_connection()
+                current_time = time.time()
 
-                # Si écoute active, écouter les messages
-                if self.listening_active and printer_state.listener_listening:
-                    if not self._listen_message():
-                        # Timeout normal ou erreur, continuer
-                        pass
+                # Requête périodique tous les 3 secondes (respecte spécifications Brother)
+                if current_time - last_status_time >= 3.0:
+                    self._check_printer_status()
+                    last_status_time = current_time
+                    self.messages_processed += 1
+
+                    # Log périodique pour confirmer activité
+                    if self.messages_processed % 10 == 0:
+                        current_time_str = time.strftime('%H:%M:%S')
+                        print(f"[{current_time_str}] 🔍 [LISTENER] {self.messages_processed} vérifications - surveillance active")
 
                 # Petit délai pour éviter surcharge CPU
-                time.sleep(0.01)
+                time.sleep(0.5)
 
             except Exception as e:
-                print(f"❌ [LISTENER] Erreur dans boucle principale: {e}")
-                self.listening_active = False
-                printer_state.listener_listening = False
+                print(f"❌ [LISTENER] Erreur surveillance: {e}")
+                time.sleep(2)  # Pause plus longue en cas d'erreur
 
-                # Attendre un peu avant de recommencer
-                time.sleep(1)
+        print(f"🛑 [LISTENER] Arrêté - {self.messages_processed} vérifications réalisées")
 
-        print(f"🛑 [LISTENER] Arrêté - {self.messages_processed} messages traités")
-        self._cleanup_connection()
-
-    def _initialize_persistent_connection(self):
-        """Initialise une connexion persistante pour l'écoute."""
+    def _check_printer_status(self):
+        """Vérifie le statut de l'imprimante avec connexion temporaire (Brother standard)."""
+        dev = None
         try:
-            print("🔌 [LISTENER] Initialisation connexion persistante pour écoute")
+            # Marquer comme en cours d'écoute
+            printer_state.listener_listening = True
 
-            self.dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
-            if self.dev is None:
-                return False
+            dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
+            if dev is None:
+                return
 
-            # Détacher kernel driver
+            # Détacher kernel driver temporairement
             try:
-                if self.dev.is_kernel_driver_active(0):
-                    self.dev.detach_kernel_driver(0)
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
             except (AttributeError, NotImplementedError):
                 pass
 
-            # Configuration USB
-            self.dev.set_configuration()
-            cfg = self.dev.get_active_configuration()
+            # Configuration temporaire
+            dev.set_configuration()
+            cfg = dev.get_active_configuration()
             intf = cfg[(0,0)]
 
-            # Endpoint d'entrée uniquement (lecture des messages spontanés)
-            self.ep_in = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            # Obtenir endpoints
+            ep_out = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+            )
+            ep_in = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
             )
 
-            if self.ep_in:
-                self.listening_active = True
-                printer_state.listener_listening = True
-                print("✅ [LISTENER] Connexion persistante établie pour écoute passive")
-                return True
-            else:
-                print("❌ [LISTENER] Endpoint IN non trouvé")
-                return False
+            if ep_out and ep_in:
+                # Envoyer requête de statut Brother
+                ep_out.write(b'\x1B\x69\x53', timeout=5000)  # ESC i S
+                response = ep_in.read(32, timeout=5000)
+
+                if len(response) == 32:
+                    self._process_status_message(response)
 
         except Exception as e:
-            print(f"❌ [LISTENER] Erreur initialisation connexion persistante: {e}")
-            return False
-
-    def _listen_message(self):
-        """Écoute un message avec connexion persistante."""
-        try:
-            # Lecture avec timeout court pour ne pas bloquer
-            response = self.ep_in.read(32, timeout=100)
-
-            if len(response) >= 8:  # Au moins l'en-tête du message
-                self.messages_processed += 1
-                self._process_status_message(response)
-
-                # Log périodique pour confirmer activité
-                if self.messages_processed % 10 == 0:
-                    current_time = time.strftime('%H:%M:%S')
-                    print(f"[{current_time}] 🔍 [LISTENER] {self.messages_processed} messages traités - écoute active")
-
-                return True
-            else:
-                return False
-
-        except usb.core.USBError as e:
-            if "timeout" in str(e).lower():
-                return False  # Timeout normal
-            else:
-                print(f"❌ [LISTENER] Erreur USB: {e}")
-                # Réinitialiser la connexion en cas d'erreur
-                self.listening_active = False
-                printer_state.listener_listening = False
-                return False
+            print(f"⚠️ [LISTENER] Erreur vérification statut: {e}")
+        finally:
+            if dev:
+                usb.util.dispose_resources(dev)
+            # Libérer le flag d'écoute
+            printer_state.listener_listening = False
 
     def _send_initial_status_request(self):
         """Envoie UNE SEULE requête de statut autorisée."""
