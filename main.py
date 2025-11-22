@@ -177,7 +177,11 @@ async def create_job(
                 return {"error": f"Erreur sauvegarde fichier {file.filename}: {str(e)}"}
 
     # Pour les produits existants, ajouter leur chemin aux saved_files
-    if not files:  # Si files est vide (produit existant), traiter les product_id
+    # Vérifier si on a des produits existants (product_id présent dans config)
+    has_products = any("product_id" in task["config"] and task["config"]["product_id"]
+                      for task in command_data.get("taches", []))
+
+    if has_products:  # On utilise des produits existants
         for task in command_data.get("taches", []):
             config = task["config"]
             if "product_id" in config and config["product_id"]:

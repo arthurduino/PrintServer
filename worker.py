@@ -137,6 +137,9 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
     if not image_path:
         raise ValueError("Config BATCH manquante: image_path")
 
+    print(f"📁 [WORKER] Image path reçu: {image_path}")
+    print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
+
     # Configuration des options par défaut, ajustée pour gros transferts
     options = {
         'cut': config.get('cut', True),
