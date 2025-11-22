@@ -366,76 +366,65 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     else:
                         raise usb_e
 
-                # 5. POLLING DE SÉCURITÉ (CONTRÔLE DE FLUX STRICT)
-                print(f"[{time.strftime('%H:%M:%S')}] ⏱️ Pause technique 0.5s avant polling...")
-                time.sleep(0.5)
-                print(f"[{time.strftime('%H:%M:%S')}] 📋 Début polling statut étiquette #{i+1}")
+                # 5. APPROCHE HYBRIDE : PAUSE ADAPTATIVE + POLLING DE CONFIRMATION
+                # Phase 1: Pause adaptative pour couvrir le gros de l'impression sans solliciter l'imprimante.
+                BASE_WAIT = 2.0  # Temps minimum pour la mécanique
+                EXTRA_SECONDS_PER_10KB = 0.8 # Facteur réduit, car on va poller après.
+                data_size_kb = len(instructions) / 1024.0
+                initial_wait = min(BASE_WAIT + (data_size_kb / 10.0) * EXTRA_SECONDS_PER_10KB, 15.0)
 
+                print(f"[{time.strftime('%H:%M:%S')}] 🕰️ Phase 1: Attente initiale adaptative de {initial_wait:.1f}s...")
+                time.sleep(initial_wait)
+
+                # Phase 2: Polling de confirmation pour obtenir un statut sûr.
+                print(f"[{time.strftime('%H:%M:%S')}] 📡 Phase 2: Début du polling de confirmation...")
                 polling_attempts = 0
-                ready_confirmations = 0 # Compteur pour les confirmations d'état "prêt"
-                max_polling_attempts = 60  # Maximum 60 tentatives (30-60 secondes max)
-
+                max_polling_attempts = 90  # ~90 secondes max pour le refroidissement
+                
                 while polling_attempts < max_polling_attempts:
+                    polling_attempts += 1
                     try:
                         # Envoyer commande statut
                         dev.write(ep_out, CMD_STATUS, timeout=1000)
-                        res = dev.read(ep_in, 32, timeout=1000)
+                        res = dev.read(ep_in, 32, timeout=2000)
 
                         if len(res) < 32:
-                            print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Réponse statut USB incomplète: {len(res)} octets reçus")
-                            time.sleep(1.0); polling_attempts += 1; continue
+                            print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Polling #{polling_attempts}: Réponse statut incomplète ({len(res)} octets)")
+                            time.sleep(1.0); continue
 
                         status_type = res[18]; phase_type = res[19]; notification_num = res[22]; error_info_1 = res[8]; error_info_2 = res[9]
                         is_printing = (phase_type == 0x01)
                         is_cooling = (status_type == 0x05) and (notification_num == 0x03)
                         is_fatal_error = (error_info_1 != 0) or (error_info_2 != 0)
+                        is_idle = (phase_type == 0x00)
 
                         if is_fatal_error:
                             print(f"⚠️ Erreur Imprimante - Octet8:{hex(error_info_1)} Octet9:{hex(error_info_2)}")
                             raise RuntimeError(f"Erreur Imprimante Fatale (E1:{hex(error_info_1)} E2:{hex(error_info_2)})")
 
                         if is_cooling:
-                            print(f"❄️ Refroidissement actif... (tentative {polling_attempts+1})")
-                            time.sleep(1.0); polling_attempts += 1; continue
+                            print(f"[{time.strftime('%H:%M:%S')}] ❄️ Polling #{polling_attempts}: Refroidissement en cours...")
+                            time.sleep(1.0); continue
 
                         if is_printing:
-                            print(f"🖨️ Impression en cours... (tentative {polling_attempts+1})")
-                            time.sleep(0.5); polling_attempts += 1; continue
+                            print(f"[{time.strftime('%H:%M:%S')}] 🖨️ Polling #{polling_attempts}: Impression encore en cours...")
+                            time.sleep(0.5); continue
 
-                        # CONDITION DE SORTIE RENFORCÉE
-                        # L'imprimante est prête SI :
-                        # 1. Sa phase est "prête" (0x00) ET elle ne refroidit pas.
-                        # 2. Un temps minimum absolu s'est écoulé.
-                        # 3. On a reçu plusieurs confirmations de cet état "prêt".
-                        printer_ready_state = (phase_type == 0x00) and not is_cooling
-                        minimum_time_elapsed = (time.time() - start_time) > 3.0 # Augmenté à 3 secondes pour plus de sécurité
-
-                        if printer_ready_state and minimum_time_elapsed:
-                            ready_confirmations += 1
-                            print(f"✅ Imprimante prête (confirmation {ready_confirmations}/3)...")
-                        else:
-                            # Si l'état change, on réinitialise le compteur
-                            ready_confirmations = 0
-
-                        # On exige 3 confirmations consécutives pour être certain
-                        if ready_confirmations >= 3:
+                        # Condition de sortie : l'imprimante est inactive ET ne refroidit pas.
+                        if is_idle and not is_cooling:
                             elapsed = time.time() - start_time
-                            print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE (confirmé 3 fois) - Durée: {elapsed:.1f}s")
+                            print(f"[{time.strftime('%H:%M:%S')}] ✅ Statut SÛR obtenu: IDLE. Étiquette #{i+1} terminée en {elapsed:.1f}s.")
                             break
-                        
-                        time.sleep(0.2) # Petite pause entre les confirmations
 
                     except usb.core.USBError as poll_error:
-                        polling_attempts += 1
                         if "timeout" in str(poll_error).lower():
-                            print(f"[{time.strftime('%H:%M:%S')}] ⏳ Timeout USB polling #{polling_attempts}/{max_polling_attempts} - Imprimante occupée, retry...")
-                            time.sleep(1.0)
-                            continue
+                            print(f"[{time.strftime('%H:%M:%S')}] ⏳ Polling #{polling_attempts}: Timeout, imprimante occupée. Nouvel essai...")
+                            time.sleep(1.0); continue
                         else:
                             raise poll_error
 
                 else: # Si la boucle while se termine sans break
-                    raise Exception(f"💥 Polling échoué après {max_polling_attempts} tentatives - Imprimante bloquée.")
+                    raise Exception(f"💥 Polling de confirmation échoué après {max_polling_attempts} tentatives. Imprimante bloquée.")
 
                 # 6. MISE À JOUR BDD APRÈS SUCCÈS
                 print(f"[{time.strftime('%H:%M:%S')}] 💾 Mise à jour BDD: {i+1}/{qty_tot} impressions terminées")
@@ -447,6 +436,11 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                 if dev:
                     print(f"[{time.strftime('%H:%M:%S')}] 🔌 Libération des ressources USB pour étiquette #{i+1}...")
                     usb.util.dispose_resources(dev)
+                
+                # --- PAUSE DE STABILISATION INCONDITIONNELLE ---
+                # Donne à l'imprimante le temps de finaliser son cycle mécanique (coupe) et de se stabiliser.
+                print(f"[{time.strftime('%H:%M:%S')}] 💤 Pause de stabilisation de 1.0s...")
+                time.sleep(1.0)
                 print(f"[{time.strftime('%H:%M:%S')}] --- Fin du cycle pour étiquette #{i+1} ---")
 
     except Exception as e:
