@@ -91,27 +91,33 @@ def _worker_loop(printer: PrinterDriver):
         config = parse_config_json(config_json)
 
         # Vérifier si l'imprimante est en phase de refroidissement
-        # Utilise le même mécanisme non-bloquant que l'API /api/printer/status
+        # Utilise le même mécanisme que l'API - le verrou empêche les conflits USB
         if printer_lock.acquire(blocking=False):
             try:
                 printer_status = printer.get_status()
             except Exception as e:
                 error_msg = str(e)
                 if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                    print(f"🔒 Imprimante occupée au début de {task_id}, attente courte...")
-                    time.sleep(2)  # Attente courte puis réessai
+                    print(f"🔒 USB occupé - ressource partagée en cours d'utilisation, prochain essai dans 1s...")
+                    printer_lock.release()  # Important : relâcher le verrou
+                    time.sleep(1)  # Attendre moins longtemps, juste assez pour éviter le spam
                     continue
                 else:
                     print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
+                    printer_lock.release()  # Important : relâcher le verrou
                     time.sleep(1)
                     continue
             finally:
                 printer_lock.release()
         else:
-            # Le verrou est pris par le worker ou l'API - simuler statut occupé temporairement
-            print(f"🔒 Verrou USB occupé au début de {task_id}, attente courte avant vérification...")
-            time.sleep(0.5)  # Attente courte puis réessai
-            continue
+            # Le verrou est pris par l'API ou un autre thread - continuer avec une supposition optimiste
+            # L'API retourne "Busy" simulé dans ce cas, le worker suppose que l'imprimante est prête
+            printer_status = {
+                'is_busy': False,  # Assumption optimiste : pas occupé par l'impression
+                'is_cooling': False,
+                'is_error': False
+            }
+            print(f"🔄 Verrou USB occupé - supposition optimiste: imprimante disponible pour tâche {task_id}")
 
         if printer_status.get('is_cooling', False):
             _set_task_cooling_wait(task_id)
@@ -155,6 +161,7 @@ def _worker_loop(printer: PrinterDriver):
                 print(f"✅ Tâche {task_id} prête à reprendre après refroidissement")
 
         _set_processing(task_id, cmd_id)
+        print(f"🔄 [WORKER] Tâche {task_id} marquée IN_PROGRESS, démarrage de l'impression...")
 
         try:
             if type_t == 'BATCH':
