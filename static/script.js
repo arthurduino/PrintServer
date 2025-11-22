@@ -1,27 +1,38 @@
 // Mise à jour périodique adaptative selon l'activité d'impression
 async function updateInterface(delay = 15000) {
+    console.log(`🔄 [UPDATE] Mise à jour programmée dans ${delay}ms`);
+
     setTimeout(async () => {
+        console.log('🔄 [UPDATE] Lancement de la mise à jour...');
+
         try {
             // Mise à jour du statut de l'imprimante en parallèle
+            console.log('🔄 [UPDATE] Récupération du statut de l\'imprimante...');
             const statusResponse = await fetch('/api/printer/status');
+            console.log(`🔄 [UPDATE] Statut HTTP: ${statusResponse.status}`);
+
             const statusData = await statusResponse.json();
+            console.log(`🔄 [UPDATE] Données statut reçues:`, statusData);
+
             updatePrinterStatus(statusData);
 
+            console.log('🔄 [UPDATE] Récupération des tâches...');
             const jobsResponse = await fetch('/api/jobs');
-            const jobs = await jobsResponse.json();
+            console.log(`🔄 [UPDATE] Jobs HTTP: ${jobsResponse.status}`);
 
-            // Vérifier s'il y a une tâche active
-            const hasActiveJob = jobs.some(job => job.statut === 'PROCESSING');
+            const jobs = await jobsResponse.json();
+            console.log(`🔄 [UPDATE] ${jobs.length} tâches reçues`);
 
             updateCurrentJob(jobs);
             updateJobList(jobs);
 
             // Programmer la prochaine mise à jour : toujours fréquente pour le statut
             const nextDelay = 3000; // Toutes les 3 secondes pour réactivité optimale
+            console.log(`🔄 [UPDATE] Prochaine mise à jour dans ${nextDelay}ms`);
             updateInterface(nextDelay);
 
         } catch (error) {
-            console.error('Erreur mise à jour:', error);
+            console.error('❌ [UPDATE] Erreur mise à jour:', error);
             // En cas d'erreur, attendre 5 secondes avant de réessayer
             updateInterface(5000);
         }

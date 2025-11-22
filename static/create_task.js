@@ -219,7 +219,7 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             config: {
                 image_path: imagePath,
                 cut: true,  // Toujours activée
-                label_type: selectedProductId ? '62' : (formData.get('label_type') || '62'),
+                label_type: selectedProductId ? 62 : parseInt(formData.get('label_type') || '62'),
                 rotate: selectedProductId ? 0 : parseInt(formData.get('rotate') || '0'),
                 product_id: selectedProductId ? parseInt(selectedProductId) : null
             }
@@ -250,9 +250,10 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             body: apiFormData
         });
 
-        console.log('📥 [CLIENT DEBUG] Réponse HTTP:', response.status, response.statusText);
-
         const result = await response.json();
+
+        console.log('📥 [CLIENT DEBUG] Réponse HTTP:', response.status, response.statusText);
+        console.log('📥 [CLIENT DEBUG] Réponse body:', result);
 
         if (response.ok) {
             showMessage('✅ Succès', `Tâche créée (ID: ${result.job_id})`);
@@ -260,6 +261,7 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             setTimeout(() => window.location.href = '/new-task', 2000);
         } else {
             showMessage('❌ Erreur', result.error || 'Erreur inconnue');
+            console.error('❌ [CLIENT DEBUG] Erreur détaillée:', result);
         }
     } catch (error) {
         showMessage('❌ Erreur', 'Erreur réseau');
@@ -269,7 +271,6 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
         submitBtn.textContent = '📄 Créer la tâche';
     }
 });
-
 // Fonctions utilitaires
 function showMessage(title, message) {
     const overlay = document.getElementById('message-overlay');
