@@ -131,7 +131,8 @@ async def create_job(
     files: List[UploadFile] = File(..., description="Fichiers images à uploader")
 ):
     """Crée une nouvelle commande avec ses tâches, gère l'upload des images."""
-    print(f"📨 [DEBUG] Reçu command_json: {command_json}")  # Debug
+    print("🚀 [ENTRYPOINT] create_job appelée")
+    print(f"📨 [DEBUG] command_json: {command_json[:200]}...")  # Debug limité
 
     # Debugger les paramètres reçus
     print(f"📨 [DEBUG] files count: {len(files) if files else 0}")  # Debug
