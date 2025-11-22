@@ -24,6 +24,7 @@ async function updateInterface(delay = 1000) {
             console.log(`🔄 [UPDATE] ${jobs.length} tâches reçues`);
 
             updateCurrentJob(jobs);
+            console.log('🔄 [UPDATE] Tâches disponibles:', jobs);
             updateJobList(jobs);
 
             // Programmer la prochaine mise à jour : plus fréquent si impression en cours
@@ -115,10 +116,16 @@ function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
 
     // Collecter toutes les tâches individuelles en attente
+    console.log('🔄 [JOBLIST] Collecte des tâches individuelles...');
     const pendingTasks = [];
     jobs.filter(job => job.statut === 'PENDING').forEach(job => {
+        console.log(`🔄 [JOBLIST] Job ${job.id} (${job.statut}) avec ${job.taches.length} tâches`);
         job.taches.forEach(task => {
-            if (task.statut === 'PENDING') {  // Only show PENDING tasks
+            // Pour les tâches d'un job PENDING, toutes sont considérées comme PENDING sauf si déjà complétées
+            const taskIsPending = task.quantite_faite < task.quantite_totale;
+            console.log(`🔄 [JOBLIST] Tâche ${task.id}: ${task.quantite_faite}/${task.quantite_totale} (${taskIsPending ? 'PENDING' : 'DONE'})`);
+
+            if (taskIsPending) {
                 pendingTasks.push({
                     jobId: job.id,
                     clientName: job.nom_client,
