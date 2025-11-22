@@ -97,8 +97,8 @@ def create_commande(nom_client: str, reference_externe: Optional[str] = None, ty
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO commandes (nom_client, reference_externe, type_commande) VALUES (?, ?, ?)",
-        (nom_client, reference_externe, type_commande)
+        "INSERT INTO commandes (nom_client, reference_externe, type_commande, statut_global) VALUES (?, ?, ?, ?)",
+        (nom_client, reference_externe, type_commande, 'PENDING')
     )
     cmd_id = cursor.lastrowid
     conn.commit()
