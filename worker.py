@@ -370,54 +370,9 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                         else:
                             raise chunk_error
 
-                    # VÉRIFICATION DE STATUT APRÈS CHAQUE CHUNK (SAUF LE DERNIER)
-                    if chunk_end < total_bytes and (chunk_start // chunk_size) % 3 == 0:  # Vérifier tous les 3 chunks
-                        print(f"[{time.strftime('%H:%M:%S')}] ⏳ Vérification statut pendant envoi ({bytes_sent}/{total_bytes})...")
-
-                        # Attempt rapide de statut (5 tentatives max, timeout court)
-                        status_attempts = 0
-                        max_status_attempts = 5
-                        while status_attempts < max_status_attempts:
-                            try:
-                                dev.write(ep_out, CMD_STATUS, timeout=500)
-                                status_res = dev.read(ep_in, 32, timeout=500)
-
-                                if len(status_res) >= 32:
-                                    status_type = status_res[18] if len(status_res) > 18 else 0xFF
-                                    phase_type = status_res[19] if len(status_res) > 19 else 0xFF
-
-                                    print(f"[{time.strftime('%H:%M:%S')}] 📊 Statut intermédiaire: Status=0x{status_type:02x} Phase=0x{phase_type:02x}")
-
-                                    # Si imprimante indique une erreur ou est occupée, on patiente
-                                    if status_type == 0x06 or phase_type != 0x00:  # Error ou occupé
-                                        consecutive_status_errors += 1
-                                        print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Imprimante occupée/erreur lors de l'envoi - attente 0.5s (erreur #{consecutive_status_errors})")
-                                        time.sleep(0.5)
-                                        status_attempts += 1
-                                        continue
-                                    else:
-                                        consecutive_status_errors = 0
-                                        break
-                                else:
-                                    status_attempts += 1
-                                    print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Réponse statut incomplète pendant envoi")
-                                    time.sleep(0.2)
-                                    continue
-
-                            except usb.core.USBError as status_error:
-                                status_attempts += 1
-                                if status_attempts < max_status_attempts:
-                                    print(f"[{time.strftime('%H:%M:%S')}] ⏳ Timeout statut pendant envoi - retry {status_attempts}/{max_status_attempts}")
-                                    time.sleep(0.2)
-                                    continue
-                                else:
-                                    print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Impossible de vérifier statut pendant envoi - continuation")
-                                    break
-
-                        # Si trop d'erreurs consécutives pendant l'envoi, abandonner cette étiquette
-                        if consecutive_status_errors >= 3:
-                            print(f"[{time.strftime('%H:%M:%S')}] 💥 Trop d'erreurs pendant envoi - abandon étiquette #{i+1}")
-                            raise Exception(f"Imprimante bloquée pendant envoi de l'étiquette #{i+1} (errors: {consecutive_status_errors})")
+                    # Petit délai entre chunks pour laisser l'imprimante respirer
+                    # NE PAS vérifier le statut pendant l'envoi - cela perturbe l'imprimante
+                    time.sleep(0.1)
 
                 print(f"[{time.strftime('%H:%M:%S')}] ✅ Toutes données USB envoyées avec succès #{i+1} ({bytes_sent} octets)")
             except usb.core.USBError as usb_e:
