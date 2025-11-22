@@ -374,4 +374,3 @@ class PrinterDriver:
             self.dev = None
 
 # Note : Sur Raspberry Pi, pyusb nécessite des permissions root ou des règles udev appropriées.
-            usb.util.dispose_resources(self.dev)
