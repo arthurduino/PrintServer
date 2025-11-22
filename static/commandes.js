@@ -121,7 +121,7 @@ async function handleCommandSubmit(event) {
             config: {
                 product_id: product.id,
                 label_type: product.format_type,
-                rotate: product.rotation.toString()
+                rotate: "90" // Toujours appliquer 90° de rotation
             }
         }))
     };
