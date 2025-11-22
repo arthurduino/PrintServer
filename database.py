@@ -51,6 +51,9 @@ def init_db():
         )
     ''')
 
+    # Vérifier et migrer les colonnes manquantes
+    _migrate_database()
+
     conn.commit()
     conn.close()
 
@@ -257,3 +260,23 @@ def get_product_image_path(product_id: int) -> str:
 def parse_config_json(config_json: str) -> dict:
     """Parse la config JSON."""
     return json.loads(config_json) if config_json else {}
+
+def _migrate_database():
+    """Migration pour ajouter les colonnes manquantes aux tables existantes."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    try:
+        # Vérifier si la colonne priorite existe dans la table taches
+        cursor.execute("PRAGMA table_info(taches)")
+        columns = [column[1] for column in cursor.fetchall()]
+
+        if 'priorite' not in columns:
+            print("Migration: Ajout de la colonne 'priorite' à la table 'taches'")
+            cursor.execute('ALTER TABLE taches ADD COLUMN priorite INTEGER DEFAULT 1')
+
+    except sqlite3.OperationalError as e:
+        print(f"Erreur lors de la migration: {e}")
+
+    conn.commit()
+    conn.close()
