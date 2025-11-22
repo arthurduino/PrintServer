@@ -95,6 +95,8 @@ def _worker_loop(printer: PrinterDriver):
         print(f"🔍 Vérification statut pour tâche {task_id}")
         if printer_lock.acquire(blocking=False):
             print(f"✅ Verrou USB acquis pour tâche {task_id}")
+            # 🛡️ TEMPS DE STABILISATION : petit délai pour laisser l'USB se stabiliser après acquisition du verrou
+            time.sleep(0.1)
             try:
                 printer_status = printer.get_status()
                 print(f"✅ Statut obtenu pour tâche {task_id}: busy={printer_status.get('is_busy')}, cooling={printer_status.get('is_cooling')}")
