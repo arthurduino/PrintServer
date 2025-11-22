@@ -91,37 +91,39 @@ def _worker_loop(printer: PrinterDriver):
         config = parse_config_json(config_json)
 
         # Vérifier si l'imprimante est en phase de refroidissement
-        # Utilise le même mécanisme que l'API - le verrou empêche les conflits USB
-        print(f"🔍 Vérification statut pour tâche {task_id} - tentative d'acquisition du verrou...")
+        # Utilise le même mécanisme - priorité si on peut acquérir le verrou, supposition optimiste sinon
+        print(f"🔍 Vérification statut pour tâche {task_id}")
         if printer_lock.acquire(blocking=False):
-            print("✅ Verrou USB acquis pour tâche {task_id}")
+            print(f"✅ Verrou USB acquis pour tâche {task_id}")
             try:
                 printer_status = printer.get_status()
                 print(f"✅ Statut obtenu pour tâche {task_id}: busy={printer_status.get('is_busy')}, cooling={printer_status.get('is_cooling')}")
             except Exception as e:
                 error_msg = str(e)
                 if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                    print(f"🔒 USB occupé pendant lecture statut pour {task_id}, relâchement du verrou et attente 1s...")
-                    printer_lock.release()  # Important : relâcher le verrou
-                    time.sleep(1)  # Attendre moins longtemps, juste assez pour éviter le spam
-                    continue
+                    # Même avec le verrou, USB peut être occupé - faire supposition optimiste car nous avons priorité
+                    print(f"🔄 USB occupé mais verrou acquis - supposition optimiste pour tâche {task_id}")
+                    printer_status = {
+                        'is_busy': False,  # Assumption optimiste : pas occupé par l'impression
+                        'is_cooling': False,
+                        'is_error': False
+                    }
                 else:
                     print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
-                    printer_lock.release()  # Important : relâcher le verrou
-                    time.sleep(1)
+                    printer_lock.release()  # Important : relâcher le verrou en cas d'erreur
+                    time.sleep(0.5)
                     continue
             finally:
                 printer_lock.release()
-                print("🔓 Verrou USB relâché pour tâche {task_id}")
+                print(f"🔓 Verrou USB relâché pour tâche {task_id}")
         else:
-            # Le verrou est pris par l'API ou un autre thread - continuer avec une supposition optimiste
-            # L'API retourne "Busy" simulé dans ce cas, le worker suppose que l'imprimante est prête
+            # Le verrou est pris par l'API - continuer avec une supposition optimiste
+            print(f"🔄 Verrou USB occupé par API - supposition optimiste: imprimante disponible pour tâche {task_id}")
             printer_status = {
                 'is_busy': False,  # Assumption optimiste : pas occupé par l'impression
                 'is_cooling': False,
                 'is_error': False
             }
-            print(f"🔄 Verrou USB occupé par autre thread - supposition optimiste: imprimante disponible pour tâche {task_id}")
 
         if printer_status.get('is_cooling', False):
             _set_task_cooling_wait(task_id)
