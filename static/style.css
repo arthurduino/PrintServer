@@ -443,40 +443,131 @@ progress::-moz-progress-bar {
     border-bottom: 1px solid #e5e7eb;
 }
 
-/* Task preview styling */
-.task-preview {
-    margin-right: 12px;
+/* Ultra-simple queue item styling */
+.simple-queue-item {
     display: flex;
     align-items: center;
+    padding: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: background-color 0.15s ease;
+}
+
+.simple-queue-item:hover {
+    background: #f9fafb;
+}
+
+.task-image-container {
     flex-shrink: 0;
+    margin-right: 12px;
 }
 
-.task-thumbnail {
-    max-width: 90px;
-    max-height: 70px;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    object-fit: contain;
+.task-image {
+    width: 60px;
+    height: 45px;
+    border: 1px solid #e5e7eb;
+    border-radius: 3px;
+    object-fit: cover;
     background: white;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
-    transition: transform 0.2s ease;
 }
 
-.task-thumbnail:hover {
-    transform: scale(1.05);
-}
-
-.no-preview {
-    width: 90px;
-    height: 70px;
-    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-    border: 2px dashed #e5e7eb;
-    border-radius: 8px;
+.no-image {
+    width: 60px;
+    height: 45px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2rem;
+    font-size: 1.5rem;
     color: #9ca3af;
+}
+
+.task-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-primary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 0.9rem;
+}
+
+.task-primary strong {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+.quantity-display {
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+.task-secondary {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.client {
+    color: #4f46e5;
+    font-weight: 500;
+}
+
+.separator {
+    color: #d1d5db;
+}
+
+.timestamp {
+    font-weight: 400;
+}
+
+.task-actions {
+    flex-shrink: 0;
+    margin-left: 12px;
+    text-align: center;
+}
+
+.quantity-count {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    background: #4f46e5;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 28px;
+}
+
+.delete-button {
+    width: 20px;
+    height: 20px;
+    margin-left: 6px;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: bold;
+    transition: background-color 0.15s ease;
+}
+
+.delete-button:hover {
+    background: #b91c1c;
+}
+
+.recovery-icon {
+    font-size: 1rem;
 }
 
 /* Enhanced queue item styling */

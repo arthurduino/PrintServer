@@ -442,7 +442,7 @@ function applyQueueChanges(queueList, changes, newTasks) {
     }
 }
 
-// Créer le HTML pour une tâche (extrait de updateJobList) - Version ergonomique
+// Créer le HTML pour une tâche - Version ultra-simplifiée et ergonomique
 function createTaskHTML(task) {
     const isRecovery = task.progress && task.progress > 0;
     const taskProgressText = isRecovery ? ` (${task.progress}/${task.quantity})` : '';
@@ -450,16 +450,17 @@ function createTaskHTML(task) {
     // Gérer nom client default si undefined
     const clientName = task.clientName || 'Client anonyme';
 
+    // Job ID avec fallback
+    const jobId = task.jobId || 'N/A';
+
     // Gérer date avec parsing robuste
-    let formattedDate = 'Date inconnue';
+    let formattedDate = '--/-- --:--';
     try {
-        // Format SQL probablement "YYYY-MM-DD HH:MM:SS"
         if (task.date && typeof task.date === 'string') {
-            const dateStr = task.date.replace(' ', 'T'); // Convertir en format ISO-like
+            const dateStr = task.date.replace(' ', 'T');
             const dateObj = new Date(dateStr);
             if (!isNaN(dateObj.getTime())) {
                 formattedDate = dateObj.toLocaleString('fr-FR', {
-                    year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
                     hour: '2-digit',
@@ -471,42 +472,37 @@ function createTaskHTML(task) {
         console.warn(`Erreur parsing date pour tâche ${task.taskId}:`, task.date);
     }
 
-    // Extraire nom du fichier pour affichage
-    let filename = 'Aucun fichier';
+    // Extraire nom du fichier pour la source seulement
+    let filename = '';
     if (task.config && task.config.image_path) {
         const pathParts = task.config.image_path.split('/');
         filename = pathParts[pathParts.length - 1];
     }
 
     return `
-    <div class="queue-item enhanced-queue-item ${isRecovery ? 'recovery-task' : ''}" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
-        <div class="task-preview">
+    <div class="queue-item simple-queue-item ${isRecovery ? 'recovery-task' : ''}" data-job-id="${jobId}" data-task-id="${task.taskId}">
+        <div class="task-image-container">
             ${task.config && task.config.image_path ?
-                `<img src="/uploads/${filename}" alt="Aperçu - ${filename}" class="task-thumbnail"
-                     onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-preview">📄</div>'">` :
-                '<div class="no-preview">📄</div>'
+                `<img src="/uploads/${filename}" alt="Aperçu tâche" class="task-image"
+                     onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">📄</div>'">` :
+                '<div class="no-image">📄</div>'
             }
         </div>
-        <div class="info">
-            <div class="task-header">
-                <strong>Cmd.${task.jobId}</strong> • <span class="client-name">${clientName}</span>
-                <div class="task-type-badge">${task.taskType}</div>
+        <div class="task-info">
+            <div class="task-primary">
+                <strong>Tâche #${task.taskId}</strong>
+                ${isRecovery ? '<span class="recovery-icon">🔄</span>' : ''}
+                <span class="quantity-display">${task.quantity}${taskProgressText ? ` <em>(${taskProgressText})</em>` : ''}</span>
             </div>
-            <div class="task-details">
-                <div class="quantity-info">
-                    <span class="quantity-number">${task.quantity}</span> exemplaire${task.quantity > 1 ? 's' : ''}
-                    ${taskProgressText ? `<span class="progress-text">${taskProgressText}</span>` : ''}
-                </div>
-                <div class="task-meta">
-                    <span class="task-date">📅 ${formattedDate}</span>
-                    ${filename !== 'Aucun fichier' ? `<span class="image-info">🖼️ ${filename}</span>` : ''}
-                </div>
-                ${isRecovery ? `<div class="recovery-notice">🔄 Reprise automatique (${task.progress} déjà imprimé${task.progress > 1 ? 's' : ''})</div>` : ''}
+            <div class="task-secondary">
+                <span class="client">${clientName}</span>
+                <span class="separator">•</span>
+                <span class="timestamp">${formattedDate}</span>
             </div>
         </div>
-        <div class="queue-actions">
-            <span class="quantity-badge">${task.quantity}</span>
-            <button class="delete-btn" onclick="deleteTask(${task.taskId})" title="Supprimer la tâche #${task.taskId}">🗑️</button>
+        <div class="task-actions">
+            <span class="quantity-count">${task.quantity}</span>
+            <button class="delete-button" onclick="deleteTask(${task.taskId})" title="Supprimer">×</button>
         </div>
     </div>
     `;
