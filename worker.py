@@ -7,16 +7,7 @@ from typing import Optional
 from printer_driver import PrinterDriver
 from database import DB_FILE, parse_config_json
 
-# Import de la fonction d'alerte email depuis main
-try:
-    from main import send_paper_alert_email
-    email_alerts_enabled = True
-    print("📧 [SMTP] Alertes email activées")
-except ImportError as e:
-    print(f"📧 [SMTP] Alertes email désactivées: {e}")
-    email_alerts_enabled = False
-    def send_paper_alert_email(*args, **kwargs):
-        return False
+
 
 # Import de brother_ql pour la rasterisation (nécessite installation de brother_ql)
 try:
@@ -37,9 +28,6 @@ print(f"ModèleBrother QL-700: {MODEL}")
 
 # État global du worker
 paused = True  # True = actif, False = mis en pause
-
-# Variable pour éviter les emails répétés de papier vide
-paper_empty_alert_sent = False
 
 def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
@@ -68,17 +56,6 @@ def _worker_loop(printer: PrinterDriver):
 
         task_data = _get_next_pending_task()
         if not task_data:
-            # Reset de l'alerte papier vide si nécessaire (quand du papier est remis)
-            global paper_empty_alert_sent  # Déclarer au début du bloc pertinent
-            if paper_empty_alert_sent:
-                try:
-                    printer_status = printer.get_status()
-                    if not printer_status.get('paper_empty', False):
-                        paper_empty_alert_sent = False
-                        print("📋 [SMTP] Papier remis - alerte reset pour prochaines notifications")
-                except Exception as e:
-                    print(f"⚠️ Erreur vérification statut papier lors reset: {e}")
-
             time.sleep(0.01)  # Délai très court pour une meilleure réactivité du statut
             continue
 
@@ -152,14 +129,6 @@ def _worker_loop(printer: PrinterDriver):
                 print(f"Tâche {task_id} échouée à cause d'un timeout - vérifier connexion USB ou imprimerie")
             elif 'Papier vide' in str(e):
                 print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
-                # 📧 ENVOYER UNE ALERTE EMAIL SI LE PAPIER EST VIDE
-                global paper_empty_alert_sent
-                if not paper_empty_alert_sent and email_alerts_enabled:
-                    if send_paper_alert_email({}):
-                        paper_empty_alert_sent = True
-                        print("📧 [SMTP] Alerte papier vide envoyée depuis _worker_loop")
-                    else:
-                        print("📧 [SMTP] Échec envoi alerte papier vide depuis _worker_loop")
             elif 'Erreur USB' in str(e):
                 print(f"Tâche {task_id} échouée : problème USB - vérifier câble et permissions")
             # Continuer immédiatement au lieu de dormir (auto-recovery gérera la reconnexion)
