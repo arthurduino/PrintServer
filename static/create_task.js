@@ -229,7 +229,14 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
     const apiFormData = new FormData();
     const taskDataJson = JSON.stringify(taskData);
     apiFormData.append('command_json', taskDataJson);
-    files.forEach(file => apiFormData.append('files', file));
+
+    // Toujours ajouter au moins un champ files, même vide pour les produits existants
+    if (files && files.length > 0) {
+        files.forEach(file => apiFormData.append('files', file));
+    } else {
+        // Pour les produits existants, ajouter un champ vide mais existant
+        apiFormData.append('files', new Blob(), '');
+    }
 
     // Debug côté client
     console.log('📤 [CLIENT DEBUG] Envoi vers /api/jobs:');
