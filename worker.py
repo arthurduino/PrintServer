@@ -337,12 +337,11 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql amélioré...")
 
         try:
-            # 🎯 APPROCHE SIMPLIFIÉE : Brother_ql avec timeout étendu + vérifications
+            # 🎯 APPROCHE SIMPLIFIÉE : Brother_ql avec paramètres corrects
             send(
                 instructions=form,  # Données raster déjà préparées
                 printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
-                blocking=True,  # Attendre la fin de l'impression
-                timeout=15000  # ⏰ Timeout étendu à 15 secondes pour gros fichiers
+                blocking=True  # Attendre la fin de l'impression
             )
 
             # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
@@ -368,8 +367,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
-                            blocking=True,
-                            timeout=20000  # Timeout encore plus long au retry
+                            blocking=True
                         )
                         print(f"Impression #{qty_done + 1} réussie après récupération")
                         qty_done += 1
@@ -388,14 +386,12 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
                         return
                 else:
                     print("⚠️ Récupération échouée, nouvel essai avec attente classique...")
-                    # Attente un peu plus courte maintenant que nous avons la bonne logique
                     time.sleep(5)
                     try:
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
-                            blocking=True,
-                            timeout=25000  # Timeout maximum au 2ème retry
+                            blocking=True
                         )
                         print(f"Impression #{qty_done + 1} réussie au deuxième essai")
                         qty_done += 1
@@ -469,12 +465,11 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
         form = convert(qlr, [img_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
 
         try:
-            # 🎯 APPROCHE SIMPLIFIÉE : Brother_ql avec timeout étendu + vérifications
+            # 🎯 APPROCHE SIMPLIFIÉE : Brother_ql avec paramètres corrects
             send(
                 instructions=form,  # Données raster déjà préparées
                 printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
-                blocking=True,  # Attendre la fin de l'impression
-                timeout=15000  # ⏰ Timeout étendu à 15 secondes pour gros fichiers
+                blocking=True  # Attendre la fin de l'impression
             )
 
             # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
@@ -498,8 +493,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
-                            blocking=True,
-                            timeout=20000  # Timeout encore plus long au retry
+                            blocking=True
                         )
                         print(f"Impression série #{img_index + 1} réussie après récupération")
                         qty_done = img_index + 1
@@ -523,8 +517,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
-                            blocking=True,
-                            timeout=25000  # Timeout maximum au 2ème retry
+                            blocking=True
                         )
                         print(f"Impression série #{img_index + 1} réussie au deuxième essai")
                         qty_done = img_index + 1
