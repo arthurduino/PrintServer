@@ -269,6 +269,14 @@ async def _create_job_with_type(command_json: str, files: List[UploadFile], type
             print(f"📁 [DEBUG] Mapping image_path: {old_path} -> {config['image_path']}")
         elif task["type"] == "SERIES" and "images" in config:
             config["images"] = [saved_files.get(img, img) for img in config["images"]]
+        elif task["type"] == "BATCH" and "product_id" in config:
+            # Pour les produits existants, récupérer le chemin de l'image depuis saved_files
+            product_id = config["product_id"]
+            product_raw = get_product(product_id)
+            if product_raw:
+                image_filename = product_raw[5]  # image_path de la BDD
+                config["image_path"] = saved_files.get(image_filename, os.path.abspath(f"uploads/{image_filename}"))
+                print(f"📁 [DEBUG] Produit {product_id}: ajouté image_path {config['image_path']}")
 
     # Créer la commande en BDD avec le type spécifié
     cmd_id = create_commande(

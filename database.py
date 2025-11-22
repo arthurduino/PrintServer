@@ -258,9 +258,17 @@ def get_product_image_path(product_id: int) -> str:
     return row[0] if row else None
 
 # Fonction utilitaire pour parser config_json
-def parse_config_json(config_json: str) -> dict:
+def parse_config_json(config_json) -> dict:
     """Parse la config JSON."""
-    return json.loads(config_json) if config_json else {}
+    if not config_json:
+        return {}
+    if isinstance(config_json, str):
+        return json.loads(config_json)
+    # Si c'est déjà un dict (ou autre type), retourner tel quel
+    if isinstance(config_json, dict):
+        return config_json
+    # Pour gérer les anciens enregistrements avec des int ou autres types
+    return {}
 
 def create_commande(nom_client: str, reference_externe: Optional[str] = None, type_commande: str = 'REGULAR') -> int:
     """Crée une nouvelle commande et retourne l'id."""
