@@ -302,8 +302,8 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
 
                 if reset_success:
                     print("Reset USB réussi, tentative d'impression après reset...")
-                    # Attendre un peu puis essayer directement (pas de pause de 10s)
-                    time.sleep(2)
+                    # Attendre 5 secondes pour laisser l'imprimante se stabiliser complètement
+                    time.sleep(5)
                     try:
                         send(
                             instructions=form,
@@ -405,7 +405,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
 
                 if reset_success:
                     print("Reset USB réussi pour série, tentative d'impression après reset...")
-                    time.sleep(2)
+                    time.sleep(5)  # Attendre 5 secondes pour laisser l'imprimante se stabiliser complètement
                     try:
                         send(
                             instructions=form,
