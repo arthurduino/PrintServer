@@ -430,12 +430,18 @@ async def delete_commande_api(commande_id: int):
         if not commande_data:
             return {"error": "Commande non trouvée"}
 
+        print(f"🗑️ [DELETE] Tentative suppression commande {commande_id}, statut: {commande_data[4]}")
+
         if commande_data[4] in ['PROCESSING']:  # statut_global
+            print(f"🗑️ [DELETE] Commande {commande_id} en cours d'impression, suppression refusée")
             return {"error": "Impossible de supprimer une commande en cours d'impression"}
 
+        print(f"🗑️ [DELETE] Suppression commande {commande_id} autorisée")
         delete_commande(commande_id)
+        print(f"🗑️ [DELETE] Commande {commande_id} supprimée avec succès")
         return {"message": "Commande supprimée"}
     except Exception as e:
+        print(f"🗑️ [DELETE] Erreur suppression commande {commande_id}: {e}")
         return {"error": str(e)}
 
 # Point d'entrée pour lancer le serveur (si exécuté directement)
