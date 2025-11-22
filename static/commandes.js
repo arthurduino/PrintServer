@@ -77,6 +77,7 @@ async function loadProducts() {
         const response = await fetch('/api/products');
         availableProducts = await response.json();
         console.log('Produits chargés:', availableProducts.length);
+        console.log('Exemples de produits:', availableProducts.slice(0, 3).map(p => ({ id: p.id, nom: p.nom, description: p.description })));
     } catch (error) {
         console.error('Erreur chargement produits:', error);
     }
@@ -159,31 +160,57 @@ async function handleCommandSubmit(event) {
 
 // Recherche de produits
 function searchProducts(event) {
-    const query = event.target.value.toLowerCase().trim();
+    const query = event.target.value.trim();
     const resultsContainer = document.getElementById('product-search-results');
 
-    if (query.length < 2) {
+    console.log('Recherche lancée avec query:', query);
+
+    // Recherche améliorée : commence après 1 caractère, plus flexible
+    if (query.length < 1) {
         resultsContainer.style.display = 'none';
         return;
     }
 
-    const filteredProducts = availableProducts.filter(p =>
-        p.nom.toLowerCase().includes(query) ||
-        (p.description && p.description.toLowerCase().includes(query))
-    );
+    const queryLower = query.toLowerCase();
+    console.log('Query normalisée:', queryLower);
+
+    const filteredProducts = availableProducts.filter(p => {
+        const nomLower = (p.nom || '').toLowerCase();
+        const descLower = (p.description || '').toLowerCase();
+
+        // Recherche flexible : contient la chaîne OU commence par la chaîne
+        const matches = nomLower.includes(queryLower) ||
+                       nomLower.startsWith(queryLower) ||
+                       descLower.includes(queryLower);
+
+        if (matches) {
+            console.log('Produit trouvé:', { id: p.id, nom: p.nom, nomLower, matches: { contains: nomLower.includes(queryLower), startsWith: nomLower.startsWith(queryLower), descContains: descLower.includes(queryLower) } });
+        }
+
+        return matches;
+    });
+
+    console.log('Nombre de produits filtrés:', filteredProducts.length);
 
     if (filteredProducts.length === 0) {
         resultsContainer.innerHTML = '<div class="search-result">Aucun produit trouvé</div>';
     } else {
         const html = filteredProducts.slice(0, 10).map(p => `
-            <div class="search-result" onclick="selectProduct(${p.id})">
-                <div class="search-result-image">
-                    <img src="/uploads/${p.image_path}" alt="${p.nom}">
+            <div class="search-result selectable-product">
+                <div class="search-result-content" onclick="selectProduct(${p.id})">
+                    <div class="search-result-image">
+                        <img src="/uploads/${p.image_path}" alt="${p.nom}">
+                    </div>
+                    <div class="search-result-info">
+                        <div class="search-result-name">${p.nom}</div>
+                        <div class="search-result-details">${p.format_type}mm - Rotation ${p.rotation}°</div>
+                        ${p.description ? `<div class="search-result-desc">${p.description}</div>` : ''}
+                    </div>
                 </div>
-                <div class="search-result-info">
-                    <div class="search-result-name">${p.nom}</div>
-                    <div class="search-result-details">${p.format_type}mm - Rotation ${p.rotation}°</div>
-                    ${p.description ? `<div class="search-result-desc">${p.description}</div>` : ''}
+                <div class="search-result-actions">
+                    <button type="button" onclick="selectProduct(${p.id})" class="btn btn-primary btn-small">
+                        ➕ Ajouter à la commande
+                    </button>
                 </div>
             </div>
         `).join('');
