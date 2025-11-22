@@ -6,7 +6,6 @@ import os
 from typing import Optional
 from printer_driver import PrinterDriver
 from database import DB_FILE, parse_config_json
-from usb_lock import printer_lock
 
 # Import de la fonction d'alerte email depuis main
 try:
@@ -72,17 +71,13 @@ def _worker_loop(printer: PrinterDriver):
             # Reset de l'alerte papier vide si nécessaire (quand du papier est remis)
             global paper_empty_alert_sent  # Déclarer au début du bloc pertinent
             if paper_empty_alert_sent:
-                if printer_lock.acquire(blocking=False):
-                    try:
-                        printer_status = printer.get_status()
-                        if not printer_status.get('paper_empty', False):
-                            paper_empty_alert_sent = False
-                            print("📋 [SMTP] Papier remis - alerte reset pour prochaines notifications")
-                    except Exception as e:
-                        print(f"⚠️ Erreur vérification statut papier lors reset: {e}")
-                    finally:
-                        printer_lock.release()
-                # Si verrou occupé, ne pas vérifier maintenant - réessaiera au prochain cycle
+                try:
+                    printer_status = printer.get_status()
+                    if not printer_status.get('paper_empty', False):
+                        paper_empty_alert_sent = False
+                        print("📋 [SMTP] Papier remis - alerte reset pour prochaines notifications")
+                except Exception as e:
+                    print(f"⚠️ Erreur vérification statut papier lors reset: {e}")
 
             time.sleep(0.01)  # Délai très court pour une meilleure réactivité du statut
             continue
@@ -91,41 +86,18 @@ def _worker_loop(printer: PrinterDriver):
         config = parse_config_json(config_json)
 
         # Vérifier si l'imprimante est en phase de refroidissement
-        # Utilise le même mécanisme - priorité si on peut acquérir le verrou, supposition optimiste sinon
-        print(f"🔍 Vérification statut pour tâche {task_id}")
-        if printer_lock.acquire(blocking=False):
-            print(f"✅ Verrou USB acquis pour tâche {task_id}")
-            # 🛡️ TEMPS DE STABILISATION : petit délai pour laisser l'USB se stabiliser après acquisition du verrou
-            time.sleep(0.1)
-            try:
-                printer_status = printer.get_status()
-                print(f"✅ Statut obtenu pour tâche {task_id}: busy={printer_status.get('is_busy')}, cooling={printer_status.get('is_cooling')}")
-            except Exception as e:
-                error_msg = str(e)
-                if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                    # Même avec le verrou, USB peut être occupé - faire supposition optimiste car nous avons priorité
-                    print(f"🔄 USB occupé mais verrou acquis - supposition optimiste pour tâche {task_id}")
-                    printer_status = {
-                        'is_busy': False,  # Assumption optimiste : pas occupé par l'impression
-                        'is_cooling': False,
-                        'is_error': False
-                    }
-                else:
-                    print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
-                    printer_lock.release()  # Important : relâcher le verrou en cas d'erreur
-                    time.sleep(0.5)
-                    continue
-            finally:
-                printer_lock.release()
-                print(f"🔓 Verrou USB relâché pour tâche {task_id}")
-        else:
-            # Le verrou est pris par l'API - continuer avec une supposition optimiste
-            print(f"🔄 Verrou USB occupé par API - supposition optimiste: imprimante disponible pour tâche {task_id}")
-            printer_status = {
-                'is_busy': False,  # Assumption optimiste : pas occupé par l'impression
-                'is_cooling': False,
-                'is_error': False
-            }
+        try:
+            printer_status = printer.get_status()
+        except Exception as e:
+            error_msg = str(e)
+            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
+                print(f"🔒 Imprimante occupée au début de {task_id}, attente courte...")
+                time.sleep(2)  # Attente courte puis réessai
+                continue
+            else:
+                print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
+                time.sleep(1)
+                continue
 
         if printer_status.get('is_cooling', False):
             _set_task_cooling_wait(task_id)
@@ -135,27 +107,15 @@ def _worker_loop(printer: PrinterDriver):
 
         # Vérifier si cette tâche attend encore la fin du refroidissement
         if _is_task_waiting_cooling(task_id):
-            # Vérifier si l'imprimante n'est plus en refroidissement - utilise le même mécanisme non-bloquant
-            if printer_lock.acquire(blocking=False):
-                try:
-                    printer_status = printer.get_status()
-                    if not printer_status.get('is_cooling', False):
-                        # Imprimante plus en refroidissement - ajouter un petit buffering de sécurité
-                        _set_task_buffering_time(task_id, 3)  # 3 secondes de buffering
-                        print(f"🧊 Imprimante sortie de refroidissement - tâche {task_id} en buffering 3s")
-                    else:
-                        print(f"🧊 Tâche {task_id} en attente - imprimante encore en refroidissement")
-                        time.sleep(0.1)
-                        continue
-                except Exception as e:
-                    print(f"⚠️ Erreur vérification statut refroidissement pour {task_id}: {e}")
-                    time.sleep(1)
-                    continue
-                finally:
-                    printer_lock.release()
+            # Vérifier si l'imprimante n'est plus en refroidissement
+            printer_status = printer.get_status()
+            if not printer_status.get('is_cooling', False):
+                # Imprimante plus en refroidissement - ajouter un petit buffering de sécurité
+                _set_task_buffering_time(task_id, 3)  # 3 secondes de buffering
+                print(f"🧊 Imprimante sortie de refroidissement - tâche {task_id} en buffering 3s")
             else:
-                # Verrou occupé - attendre un peu puis réessayer
-                time.sleep(0.5)
+                print(f"🧊 Tâche {task_id} en attente - imprimante encore en refroidissement")
+                time.sleep(0.1)
                 continue
 
             remaining_buffering = _get_task_buffering_seconds(task_id)
@@ -169,7 +129,6 @@ def _worker_loop(printer: PrinterDriver):
                 print(f"✅ Tâche {task_id} prête à reprendre après refroidissement")
 
         _set_processing(task_id, cmd_id)
-        print(f"🔄 [WORKER] Tâche {task_id} marquée IN_PROGRESS, démarrage de l'impression...")
 
         try:
             if type_t == 'BATCH':
@@ -195,20 +154,12 @@ def _worker_loop(printer: PrinterDriver):
                 print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
                 # 📧 ENVOYER UNE ALERTE EMAIL SI LE PAPIER EST VIDE
                 if not paper_empty_alert_sent and email_alerts_enabled:
-                    if printer_lock.acquire(blocking=False):
-                        try:
-                            printer_status = printer.get_status()
-                            if send_paper_alert_email(printer_status):
-                                paper_empty_alert_sent = True
-                                print("📧 [SMTP] Alerte papier vide envoyée")
-                            else:
-                                print("📧 [SMTP] Échec envoi alerte papier vide")
-                        except Exception as email_e:
-                            print(f"📧 [SMTP] Erreur récupération statut pour alerte papier: {email_e}")
-                        finally:
-                            printer_lock.release()
+                    if send_paper_alert_email({}):
+                        global paper_empty_alert_sent
+                        paper_empty_alert_sent = True
+                        print("📧 [SMTP] Alerte papier vide envoyée depuis _worker_loop")
                     else:
-                        print("📧 [SMTP] Verrou USB occupé - alerte papier différée")
+                        print("📧 [SMTP] Échec envoi alerte papier vide depuis _worker_loop")
             elif 'Erreur USB' in str(e):
                 print(f"Tâche {task_id} échouée : problème USB - vérifier câble et permissions")
             # Continuer immédiatement au lieu de dormir (auto-recovery gérera la reconnexion)
@@ -407,20 +358,12 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
 
     for _ in range(qty_tot - qty_done):  # On termine seulement les impressions restantes !
         # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
-        if printer_lock.acquire(blocking=False):
-            try:
-                printer_status = printer.get_status()
-                if printer_status.get('is_cooling', False):
-                    _set_task_cooling_wait(task_id)
-                    print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - mise en attente dynamique")
-                    # Ne pas marquer la tâche en erreur, juste la mettre en pause
-                    return
-            except Exception as e:
-                print(f"⚠️ Erreur vérification statut cooling pendant tâche {task_id}: {e}")
-                # En cas d'erreur, continuer pour éviter blocage
-            finally:
-                printer_lock.release()
-        # Si verrou occupé, continuer avec l'impression
+        printer_status = printer.get_status()
+        if printer_status.get('is_cooling', False):
+            _set_task_cooling_wait(task_id)
+            print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - mise en attente dynamique")
+            # Ne pas marquer la tâche en erreur, juste la mettre en pause
+            return
 
         print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
 
@@ -523,20 +466,12 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
     qty_done = 0
     for img_path in images:
         # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
-        if printer_lock.acquire(blocking=False):
-            try:
-                printer_status = printer.get_status()
-                if printer_status.get('is_cooling', False):
-                    _set_task_cooling_wait(task_id)
-                    print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - mise en attente dynamique")
-                    # Ne pas marquer la tâche en erreur, juste la mettre en pause
-                    return
-            except Exception as e:
-                print(f"⚠️ Erreur vérification statut cooling pendant série {task_id}: {e}")
-                # En cas d'erreur, continuer pour éviter blocage
-            finally:
-                printer_lock.release()
-        # Si verrou occupé, continuer avec l'impression
+        printer_status = printer.get_status()
+        if printer_status.get('is_cooling', False):
+            _set_task_cooling_wait(task_id)
+            print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - mise en attente dynamique")
+            # Ne pas marquer la tâche en erreur, juste la mettre en pause
+            return
 
         print(f"Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
 
@@ -656,7 +591,6 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
     """
     start_time = time.time()
     last_status = None
-    busy_start_time = None  # 🍯 WATCHDOG : suivi du temps BUSY prolongé
 
     while time.time() - start_time < timeout_seconds:
         try:
@@ -666,22 +600,6 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
             if not status.get('is_busy', False) and not status.get('is_cooling', False):
                 print(f"✅ Impression terminée - statut: {status['phase']}")
                 return True
-
-            # 🍯 WATCHDOG ANTI-BLOCAGE : détecter si l'imprimante reste BUSY anormalement longtemps
-            # Si elle est busy mais qu'aucune tâche n'est réellement en cours d'impression
-            if status.get('is_busy', False):
-                if busy_start_time is None:
-                    busy_start_time = time.time()
-                    print("🔍 Watchdog activé - surveillance de BUSY prolongé...")
-
-                busy_duration = time.time() - busy_start_time
-                if busy_duration > 5.0 and not _has_active_print_task():
-                    print(f"🐶 WATCHDOG: Imprimante BUSY depuis {busy_duration:.1f}s mais aucune tâche active - forçant la sortie!")
-                    # Forcer la sortie de la boucle pour permettre l'impression
-                    break
-            else:
-                # Plus busy - reset du watchdog
-                busy_start_time = None
 
             # Afficher le statut actuel toutes les 2 secondes pour éviter spam
             current_status = f"{status['phase']} (busy: {status['is_busy']}, cooling: {status['is_cooling']})"
@@ -698,33 +616,6 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
 
     print(f"❌ Timeout ({timeout_seconds}s) dépassé en attendant la fin de l'impression")
     return False
-
-def _has_active_print_task() -> bool:
-    """Vérifie si une tâche d'impression est actuellement en cours.
-
-    Cette fonction est utilisée par le watchdog pour détecter les faux positifs BUSY.
-
-    Returns:
-        bool: True si une tâche est en cours d'impression (IN_PROGRESS ou PROCESSING), False sinon
-    """
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        # Vérifier s'il y a des tâches ou commandes en cours d'impression
-        cursor.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT 1 FROM taches WHERE statut IN ('IN_PROGRESS', 'PROCESSING')
-                UNION ALL
-                SELECT 1 FROM commandes WHERE statut_global = 'PROCESSING'
-            )
-        """)
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count > 0
-    except Exception as e:
-        print(f"⚠️ Erreur lors de la vérification des tâches actives: {e}")
-        # En cas d'erreur, assumer qu'il y a une tâche active pour éviter le forçage
-        return True
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # printer = PrinterDriver()

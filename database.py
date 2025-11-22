@@ -91,69 +91,6 @@ def add_missing_columns_if_needed():
     finally:
         conn.close()
 
-def update_database_constraints():
-    """Met à jour les contraintes de base de données si nécessaire."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    try:
-        # Vérifier si le statut CANCELLED est autorisé
-        # Tester avec une requête qui devrait échouer si la contrainte bloque CANCELLED
-        try:
-            cursor.execute("INSERT INTO taches (commande_id, ordre, type_tache, config_json, quantite_totale, statut) VALUES (0, 0, 'TEST', '{}', 1, 'CANCELLED')")
-            conn.rollback()  # Annuler le test
-            print("✅ Statut 'CANCELLED' déjà autorisé dans la base de données.")
-        except sqlite3.IntegrityError:
-            # La contrainte bloque CANCELLED, on doit l'étendre
-            print("🔧 Statut 'CANCELLED' non autorisé - mise à jour de la base de données...")
-
-            # Méthode 1: Recréer la table avec les nouveaux statuts autorisés
-            # D'abord sauvegarder les données existantes
-            cursor.execute("""
-                CREATE TABLE taches_backup AS
-                SELECT * FROM taches
-            """)
-
-            # Supprimer la table originale et la recréer
-            cursor.execute("DROP TABLE taches")
-
-            # Recréer la table taches (sans CHECK constraint restrictive)
-            cursor.execute('''
-                CREATE TABLE taches (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    commande_id INTEGER NOT NULL,
-                    ordre INTEGER NOT NULL,
-                    type_tache TEXT NOT NULL,
-                    config_json TEXT NOT NULL,
-                    quantite_totale INTEGER NOT NULL,
-                    quantite_faite INTEGER DEFAULT 0,
-                    statut TEXT DEFAULT 'PENDING' CHECK (statut IN ('PENDING', 'IN_PROGRESS', 'DONE', 'ERROR', 'CANCELLED')),
-                    date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    priorite INTEGER DEFAULT 1,
-                    cooling_until REAL DEFAULT 0,
-                    FOREIGN KEY (commande_id) REFERENCES commandes (id)
-                )
-            ''')
-
-            # Restaurer les données
-            cursor.execute("""
-                INSERT INTO taches (id, commande_id, ordre, type_tache, config_json, quantite_totale, quantite_faite, statut, date_creation, priorite, cooling_until)
-                SELECT id, commande_id, ordre, type_tache, config_json, quantite_totale, quantite_faite, statut, date_creation, priorite, cooling_until
-                FROM taches_backup
-            """)
-
-            # Supprimer la table temporaire
-            cursor.execute("DROP TABLE taches_backup")
-
-            conn.commit()
-            print("✅ Base de données mise à jour - statut 'CANCELLED' maintenant autorisé.")
-
-    except Exception as e:
-        print(f"Erreur lors de la mise à jour des contraintes: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
-
 # Fonctions de gestion des commandes
 def create_commande(nom_client: str, reference_externe: Optional[str] = None, type_commande: str = 'SIMPLE_TASK') -> int:
     """Crée une nouvelle commande et retourne son ID."""

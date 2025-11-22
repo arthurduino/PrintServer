@@ -6,83 +6,12 @@ from typing import List
 import json
 import os
 import sqlite3
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from database import (
-    init_db, add_missing_columns_if_needed, update_database_constraints, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
+    init_db, add_missing_columns_if_needed, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
 )
 from printer_driver import PrinterDriver
 from worker import run_worker
-from usb_lock import printer_lock
-
-# Configuration SMTP pour les alertes papier
-SMTP_CONFIG = {
-    'server': 'mail.infomaniak.com',
-    'port': 465,
-    'use_ssl': True,
-    'username': 'contact@action-locale.fr',
-    'password': '4n49k6dmJC9FUGd7',
-    'destinataire': 'arthurdeboisseson@gmail.com'
-}
-
-def send_paper_alert_email(printer_status: dict = None):
-    """Envoie un email d'alerte quand le papier est épuisé."""
-    try:
-        # Créer le message
-        msg = MIMEMultipart()
-        msg['From'] = SMTP_CONFIG['username']
-        msg['To'] = SMTP_CONFIG['destinataire']  # Envoi à soi-même
-        msg['Subject'] = '🚨 ALERTE : Papier épuisé sur l\'imprimante'
-
-        # Corps du message
-        body = """
-        <html>
-        <body>
-        <h2>🚨 Alerte Papier Épuisé</h2>
-        <p>L'imprimante Brother QL-700 a détecté que le papier est épuisé.</p>
-        <p><strong>Actions requises :</strong></p>
-        <ul>
-        <li>Vérifier le rouleau d'étiquettes</li>
-        <li>Recharger le papier si nécessaire</li>
-        <li>Redémarrer l'impression manuellement après remplacement</li>
-        </ul>
-        """ + (f"""
-        <p><strong>Statut détaillé :</strong></p>
-        <ul>
-        <li>Phase : {printer_status.get('phase', 'N/A')}</li>
-        <li>Occupée : {printer_status.get('is_busy', False)}</li>
-        <li>Refroidissement : {printer_status.get('is_cooling', False)}</li>
-        </ul>
-        """ if printer_status else "") + """
-        <p>
-        <em>Cette alerte a été générée automatiquement par le Print Server.</em>
-        </p>
-        </body>
-        </html>
-        """
-
-        msg.attach(MIMEText(body, 'html'))
-
-        # Connexion SMTP
-        if SMTP_CONFIG['use_ssl']:
-            server = smtplib.SMTP_SSL(SMTP_CONFIG['server'], SMTP_CONFIG['port'])
-        else:
-            server = smtplib.SMTP(SMTP_CONFIG['server'], SMTP_CONFIG['port'])
-            server.starttls()
-
-        server.login(SMTP_CONFIG['username'], SMTP_CONFIG['password'])
-        text = msg.as_string()
-        server.sendmail(SMTP_CONFIG['username'], SMTP_CONFIG['username'], text)
-        server.quit()
-
-        print("📧 [SMTP] Alerte papier épuisé envoyée avec succès")
-        return True
-
-    except Exception as e:
-        print(f"📧 [SMTP] Erreur envoi email alerte papier : {e}")
-        return False
 
 app = FastAPI(title="Print Server API")
 
@@ -126,7 +55,6 @@ async def startup_event():
         # Initialiser la base de données
         init_db()
         add_missing_columns_if_needed()
-        update_database_constraints()
         print("Base de données initialisée et mise à jour.")
 
         printer = PrinterDriver()
@@ -396,72 +324,50 @@ async def resume_worker():
 @app.get("/api/printer/status")
 async def get_printer_status():
     """Renvoie l'état détaillé actuel de l'imprimante avec tous les codes de statut."""
-    # CONTRAINTE CRITIQUE : L'API ne doit JAMAIS bloquer
-    # Utilise printer_lock.acquire(blocking=False) pour ne pas attendre le worker
-
     if not printer:
         return {"status": "Disconnected", "detail": "Imprimante non initialisée", "is_error": True}
 
-    # Si le verrou est disponible (worker ne travaille pas), on peut accéder à l'USB
-    if printer_lock.acquire(blocking=False):
-        try:
-            # Le worker n'utilise pas l'imprimante, on peut lire le statut réel
-            status = printer.get_status()
+    try:
+        status = printer.get_status()
 
-            # Retourner TOUTES les informations du driver pour précision maximale
-            result = {
-                "status": "Ready", # Valeur par défaut
-                "detail": "",
-                "phase": status['phase'],
-                "raw_phase": status['raw_phase'],
-                "is_busy": status['is_busy'],
-                "is_cooling": status['is_cooling'],
-                "paper_empty": status['paper_empty'],
-                "cover_open": status['cover_open'],
-                "is_error": status['is_error']
-            }
+        # Retourner TOUTES les informations du driver pour précision maximale
+        result = {
+            "status": "Ready", # Valeur par défaut
+            "detail": "",
+            "phase": status['phase'],
+            "raw_phase": status['raw_phase'],
+            "is_busy": status['is_busy'],
+            "is_cooling": status['is_cooling'],
+            "paper_empty": status['paper_empty'],
+            "cover_open": status['cover_open'],
+            "is_error": status['is_error']
+        }
 
-            # Déterminer le statut principal basé sur les flags les plus prioritaires
-            if status['cover_open']:
-                result["status"] = "Cover Open"
-                result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
-            elif status['paper_empty']:
-                result["status"] = "Paper Empty"
-                result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
-            elif status['phase'] == 'COOLING':
-                result["status"] = "Cooling"
-                result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
-            elif status['is_busy']:
-                result["status"] = "Busy"
-                result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
-            else:
-                result["status"] = "Ready"
-                result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
+        # Déterminer le statut principal basé sur les flags les plus prioritaires
+        if status['cover_open']:
+            result["status"] = "Cover Open"
+            result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
+        elif status['paper_empty']:
+            result["status"] = "Paper Empty"
+            result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
+        elif status['phase'] == 'COOLING':
+            result["status"] = "Cooling"
+            result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
+        elif status['is_busy']:
+            result["status"] = "Busy"
+            result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
+        else:
+            result["status"] = "Ready"
+            result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
 
-            return result
+        return result
 
-        except Exception as e:
-            return {
-                "status": "Error",
-                "detail": f"Erreur de communication: {str(e)}",
-                "phase": "UNKNOWN",
-                "is_error": True
-            }
-        finally:
-            printer_lock.release()
-    else:
-        # Le verrou est pris par le worker - retourner immédiatement un statut BUSY simulé
-        # Cela évite tout accès concurrent à l'USB qui pourrait causer des erreurs
+    except Exception as e:
         return {
-            "status": "Busy",
-            "detail": "Worker is printing - Real-time status temporarily unavailable",
-            "phase": "WORKER_BUSY",
-            "raw_phase": 0,
-            "is_busy": True,
-            "is_cooling": False,
-            "paper_empty": False,
-            "cover_open": False,
-            "is_error": False
+            "status": "Error",
+            "detail": f"Erreur de communication: {str(e)}",
+            "phase": "UNKNOWN",
+            "is_error": True
         }
 
 # API Routes pour les produits (autocollants enregistrés)
@@ -579,92 +485,64 @@ async def delete_commande_api(commande_id: int):
 @app.delete("/api/taches/{tache_id}")
 async def delete_tache_api(tache_id: int):
     """Supprime une tâche individuelle (seulement si elle n'est pas en cours d'impression)."""
-    import time
-
-    max_retries = 3
-
-    def _execute_with_retry(query, params=None, retry_delay=0.1):
-        """Exécute une requête SQL avec retry automatique en cas de database locked."""
-        for attempt in range(max_retries):
-            try:
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-                return True
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    print(f"🔄 [DB_LOCK] Tentative {attempt + 1}/{max_retries} - database locked, retry dans {retry_delay}s")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Backoff exponentiel
-                else:
-                    raise e
-        return False
-
     try:
+        # Récupérer les infos de la tâche pour vérification
         print(f"🗑️ [TASK_DELETE] Tentative suppression tâche {tache_id}")
 
-        # Utiliser une seule connexion pour toutes les opérations
-        conn = sqlite3.connect(DB_FILE, timeout=10.0)  # Timeout plus long
+        # Pour l'instant, on va utiliser une requête SQL directe pour récupérer le statut de la tâche
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.statut, t.commande_id, c.statut_global
+            FROM taches t
+            JOIN commandes c ON t.commande_id = c.id
+            WHERE t.id = ?
+        """, (tache_id,))
+        task_data = cursor.fetchone()
+        conn.close()
+
+        if not task_data:
+            print(f"🗑️ [TASK_DELETE] Tâche {tache_id} non trouvée")
+            return {"error": "Tâche non trouvée"}
+
+        task_status, command_id, command_status = task_data
+        print(f"🗑️ [TASK_DELETE] Tâche {tache_id}: statut='{task_status}', commande={command_id} (statut='{command_status}')")
+
+        # Vérifier si la tâche peut être supprimée
+        if task_status in ['PROCESSING', 'IN_PROGRESS']:
+            print(f"🗑️ [TASK_DELETE] Tâche {tache_id} en cours d'impression, suppression refusée")
+            return {"error": "Impossible de supprimer une tâche en cours d'impression"}
+
+        if command_status == 'PROCESSING':
+            print(f"🗑️ [TASK_DELETE] La commande {command_id} est en cours d'impression, suppression de tâche refusée")
+            return {"error": "Impossible de supprimer une tâche tant que la commande est en cours d'impression"}
+
+        # On peut supprimer la tâche - on la marque comme DONE au lieu de la supprimer
+        # pour éviter les problèmes de contraintes de base de données
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
 
-        try:
-            # Récupérer les infos de la tâche pour vérification
-            _execute_with_retry("""
-                SELECT t.statut, t.commande_id, c.statut_global
-                FROM taches t
-                JOIN commandes c ON t.commande_id = c.id
-                WHERE t.id = ?
-            """, (tache_id,))
+        # Marquer la tâche comme DONE (statut valide selon les contraintes BDD)
+        cursor.execute("UPDATE taches SET statut = 'DONE' WHERE id = ?", (tache_id,))
 
-            task_data = cursor.fetchone()
+        # Vérifier si c'était la dernière tâche en attente de la commande
+        cursor.execute("""
+            SELECT COUNT(*) FROM taches
+            WHERE commande_id = ? AND statut IN ('PENDING', 'IN_PROGRESS')
+        """, (command_id,))
+        remaining_tasks = cursor.fetchone()[0]
 
-            if not task_data:
-                print(f"🗑️ [TASK_DELETE] Tâche {tache_id} non trouvée")
-                return {"error": "Tâche non trouvée"}
+        if remaining_tasks == 0:
+            # Plus de tâches actives - marquer la commande comme DONE
+            cursor.execute("UPDATE commandes SET statut_global = 'DONE' WHERE id = ?", (command_id,))
+            print(f"🗑️ [TASK_DELETE] Dernière tâche supprimée - commande {command_id} marquée DONE")
 
-            task_status, command_id, command_status = task_data
-            print(f"🗑️ [TASK_DELETE] Tâche {tache_id}: statut='{task_status}', commande={command_id} (statut='{command_status}')")
+        conn.commit()
+        conn.close()
 
-            # Vérifier si la tâche peut être supprimée
-            if task_status in ['PROCESSING', 'IN_PROGRESS']:
-                print(f"🗑️ [TASK_DELETE] Tâche {tache_id} en cours d'impression, suppression refusée")
-                return {"error": "Impossible de supprimer une tâche en cours d'impression"}
+        print(f"🗑️ [TASK_DELETE] Tâche {tache_id} supprimée avec succès (statut=DONE)")
+        return {"message": f"Tâche {tache_id} supprimée"}
 
-            if command_status == 'PROCESSING':
-                print(f"🗑️ [TASK_DELETE] La commande {command_id} est en cours d'impression, suppression de tâche refusée")
-                return {"error": "Impossible de supprimer une tâche tant que la commande est en cours d'impression"}
-
-            # Marquer la tâche comme DONE (terminée/supprimée)
-            _execute_with_retry("UPDATE taches SET statut = 'DONE' WHERE id = ?", (tache_id,))
-
-            # Vérifier si c'était la dernière tâche en attente de la commande
-            _execute_with_retry("""
-                SELECT COUNT(*) FROM taches
-                WHERE commande_id = ? AND statut IN ('PENDING', 'IN_PROGRESS')
-            """, (command_id,))
-
-            remaining_tasks = cursor.fetchone()[0]
-
-            if remaining_tasks == 0:
-                # Plus de tâches actives - marquer la commande comme DONE
-                _execute_with_retry("UPDATE commandes SET statut_global = 'DONE' WHERE id = ?", (command_id,))
-                print(f"🗑️ [TASK_DELETE] Dernière tâche supprimée - commande {command_id} marquée DONE")
-
-            conn.commit()
-            print(f"🗑️ [TASK_DELETE] Tâche {tache_id} supprimée avec succès (statut=DONE)")
-            return {"message": f"Tâche {tache_id} supprimée"}
-
-        finally:
-            conn.close()
-
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            print(f"🗑️ [TASK_DELETE] Erreur suppression tâche {tache_id}: database is locked après {max_retries} tentatives")
-            return {"error": "Base de données occupée, veuillez réessayer dans quelques instants"}
-        else:
-            print(f"🗑️ [TASK_DELETE] Erreur opérationnelle suppression tâche {tache_id}: {e}")
-            return {"error": str(e)}
     except Exception as e:
         print(f"🗑️ [TASK_DELETE] Erreur suppression tâche {tache_id}: {e}")
         return {"error": str(e)}
