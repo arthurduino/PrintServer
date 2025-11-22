@@ -280,21 +280,25 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
         # 3. BOUCLE D'IMPRESSION AVEC POLLING DE SÉCURITÉ
         for i in range(qty_done, qty_tot):
-            print(f"🖨️ Envoi étiquette #{i+1}/{qty_tot}...")
+            start_time = time.time()  # Timer pour mesurer durée totale
+            print(f"[{time.strftime('%H:%M:%S')}] 🖨️ Début impression #{i+1}/{qty_tot} (tâche {task_id})")
 
             # A. ENVOI DES DONNÉES AVEC TIMEOUT LARGE (10s)
+            print(f"[{time.strftime('%H:%M:%S')}] 📤 Envoi données USB étiquette #{i+1} ({len(instructions)} octets)")
             try:
                 dev.write(ep_out, instructions, timeout=10000)
+                print(f"[{time.strftime('%H:%M:%S')}] ✅ Données USB envoyées avec succès #{i+1}")
             except usb.core.USBError as usb_e:
                 error_str = str(usb_e)
+                print(f"[{time.strftime('%H:%M:%S')}] ❌ Erreur USB envoi #{i+1}: {error_str}")
                 if "Resource busy" in error_str or "16" in error_str:  # [Errno 16]
                     print(f"🔒 Ressource USB occupée après {i} impressions - nouvel essai après délai...")
                     time.sleep(2.0)
                     try:
                         dev.write(ep_out, instructions, timeout=10000)
                         print(f"✅ Étiquette #{i+1} réussie au deuxième essai")
-                    except Exception:
-                        print(f"💥 Échec définitif de l'étiquette #{i+1}")
+                    except Exception as retry_e:
+                        print(f"💥 Échec définitif de l'étiquette #{i+1} au retry: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
@@ -302,7 +306,9 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     raise usb_e
 
             # B. PAUSE TECHNIQUE INITIALE (laisser le buffer se remplir)
+            print(f"[{time.strftime('%H:%M:%S')}] ⏱️ Pause technique 0.5s étiquette #{i+1}")
             time.sleep(0.5)
+            print(f"[{time.strftime('%H:%M:%S')}] 📋 Début polling statut étiquette #{i+1}")
 
             # C. POLLING DE SÉCURITÉ (CONTRÔLE DE FLUX STRICT)
             polling_attempts = 0
@@ -329,7 +335,8 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
                     if printer_ready:
                         # 🎯 CONDITION DE SORTIE ATTEINTE
-                        print(f"✅ Étiquette #{i+1} Terminée - Imprimante prête (Idle + Reception + Froide)")
+                        elapsed = time.time() - start_time
+                        print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} Terminée - Imprimante prête (Idle + Reception + Froide) - Durée: {elapsed:.1f}s")
                         break  # Sortie de boucle polling - voie libre pour suivante
                     elif is_cooling:
                         print(f"❄️ Mode Refroidissement actif - Attente 1.0s avant vérification...")
@@ -344,10 +351,10 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     polling_attempts += 1
                     error_str = str(poll_error)
                     if "timeout" in error_str.lower():
-                        print(f"⚠️ Timeout USB lors de polling #{polling_attempts}/{max_polling_attempts} - Retry après 1.0s...")
+                        print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Timeout USB lors de polling #{polling_attempts}/{max_polling_attempts} - Retry après 1.0s...")
                         time.sleep(1.0)
                     else:
-                        print(f"❌ Erreur USB critique lors de polling #{polling_attempts}: {error_str}")
+                        print(f"[{time.strftime('%H:%M:%S')}] ❌ Erreur USB critique lors de polling #{polling_attempts}: {error_str}")
                         raise poll_error  # Erreur critique, sortir immédiatement
 
             else:
@@ -355,19 +362,24 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                 raise Exception(f"💥 Polling échoué après {max_polling_attempts} tentatives - Imprimante bloquée en état inconnu (Busy:{is_busy if 'is_busy' in locals() else '?'} Phase:{hex(res[19]) if 'res' in locals() else '?'} Cooling:{is_cooling if 'is_cooling' in locals() else '?'})")
 
             # D. MISE À JOUR BDD APRÈS CHAQUE ÉTIQUETTE
+            print(f"[{time.strftime('%H:%M:%S')}] 💾 Mise à jour BDD: {qty_done+1}/{qty_tot} impressions terminées")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
     except Exception as e:
-        print(f"❌ Erreur dans _process_batch_task: {e}")
+        print(f"[{time.strftime('%H:%M:%S')}] ❌ Erreur CRITIQUE dans _process_batch_task (tâche {task_id}): {e}")
         _update_task_status(task_id, 'ERROR')
         _update_command_status(cmd_id, 'ERROR')
+        import traceback
+        print(f"[{time.strftime('%H:%M:%S')}] 🔍 TRACEBACK COMPLET:")
+        traceback.print_exc()
         raise  # Re-lançer pour trace complète
     finally:
         # NETTOYAGE CONNEXION PERSISTANTE
         if 'dev' in locals():
             usb.util.dispose_resources(dev)
-        print(f"🔌 [WORKER] Connexion USB fermée pour tâche {task_id}")
+        print(f"[{time.strftime('%H:%M:%S')}] 🔌 Connexion USB fermée pour tâche {task_id}")
+
 
 def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes avec Brother_QL."""
