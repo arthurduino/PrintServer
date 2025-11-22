@@ -145,12 +145,11 @@ async def get_commandes_list():
             tasks.append({
                 "id": t[0],
                 "ordre": t[2],
-                "priorite": t[3] if len(t) > 3 else 1,  # priorité si disponible
-                "type_tache": t[4] if len(t) > 4 else t[3],
-                "config": parse_config_json(t[5] if len(t) > 5 else t[4]),
-                "quantite_totale": t[6] if len(t) > 6 else t[5],
-                "quantite_faite": t[7] if len(t) > 7 else t[6],
-                "statut": t[8] if len(t) > 8 else t[7]
+                "type_tache": t[3],
+                "config": parse_config_json(t[4]),
+                "quantite_totale": t[5],
+                "quantite_faite": t[6],
+                "statut": t[7]
             })
         jobs.append({
             "id": cmd_id,
