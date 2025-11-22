@@ -61,10 +61,15 @@ function updatePrinterStatus(statusData) {
     } else if (statusData.status === 'Busy') {
         statusEl.textContent = 'Status: Impression en cours';
         statusEl.style.color = '#3498db';
-    } else if (statusData.status === 'Error') {
-        // Gestion spéciale pour les erreurs USB/réseau
-        statusEl.textContent = 'Status: Erreur de communication USB';
-        statusEl.style.color = '#e74c3c';
+    } else if (statusData.status === 'Error' || statusData.is_error) {
+        // Gestion spéciale pour les erreurs USB/réseau vs erreurs normales
+        if (statusData.phase === 'COOLING') {
+            statusEl.textContent = 'Status: Refroidissement en cours';
+            statusEl.style.color = '#f39c12';
+        } else {
+            statusEl.textContent = 'Status: Erreur de communication USB';
+            statusEl.style.color = '#e74c3c';
+        }
     } else {
         statusEl.textContent = `Status: ${statusData.detail || statusData.status}`;
         statusEl.style.color = '#e74c3c';
