@@ -61,7 +61,19 @@ def _worker_loop(printer: PrinterDriver):
         config = parse_config_json(config_json)
 
         # Vérifier si l'imprimante est en phase de refroidissement
-        printer_status = printer.get_status()
+        try:
+            printer_status = printer.get_status()
+        except Exception as e:
+            error_msg = str(e)
+            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
+                print(f"🔒 Imprimante occupée au début de {task_id}, attente courte...")
+                time.sleep(2)  # Attente courte puis réessai
+                continue
+            else:
+                print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
+                time.sleep(1)
+                continue
+
         if printer_status.get('is_cooling', False):
             _set_task_cooling_wait(task_id)
             print(f"🧊 Imprimante en refroidissement - tâche {task_id} mise en attente")
