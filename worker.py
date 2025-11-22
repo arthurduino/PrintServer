@@ -401,7 +401,14 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                             print(f"🖨️ Impression en cours... (tentative {polling_attempts+1})")
                             time.sleep(0.5); polling_attempts += 1; continue
 
-                        printer_ready = (phase_type == 0x00) and not is_cooling
+                        # CONDITION DE SORTIE RENFORCÉE
+                        # L'imprimante est prête SI :
+                        # 1. Sa phase est "prête" (0x00) ET elle ne refroidit pas.
+                        # 2. Un temps minimum s'est écoulé pour garantir que l'impression physique a eu lieu.
+                        printer_ready_state = (phase_type == 0x00) and not is_cooling
+                        minimum_time_elapsed = (time.time() - start_time) > 2.0 # Attendre au moins 2 secondes
+
+                        printer_ready = printer_ready_state and minimum_time_elapsed
                         if printer_ready:
                             elapsed = time.time() - start_time
                             print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE - Durée: {elapsed:.1f}s")
