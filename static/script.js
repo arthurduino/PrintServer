@@ -147,9 +147,16 @@ function updateJobList(jobs) {
 
     queueList.innerHTML = pendingTasks.map(task => `
         <div class="queue-item" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
+            <div class="task-preview">
+                ${task.config && task.config.image_path ?
+                    `<img src="/uploads/${task.config.image_path}" alt="Aperçu tâche #${task.taskId}" class="task-thumbnail" onerror="this.style.display='none'">` :
+                    '<div class="no-preview">📄</div>'
+                }
+            </div>
             <div class="info">
                 <strong>Tâche #${task.taskId}</strong> - ${task.clientName}
                 <br><small>${task.quantity} exemplaires - ${task.taskType} - ${new Date(task.date).toLocaleString()}</small>
+                ${task.config && task.config.image_path ? `<br><small class="image-name">${task.config.image_path}</small>` : ''}
             </div>
             <div class="queue-actions">
                 <span class="quantity">${task.quantity}</span>
