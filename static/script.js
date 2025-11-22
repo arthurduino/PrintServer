@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Variable globale pour l'état du worker
 let workerPausedState = false;
 
-// Mise à jour simple et épurée du statut de l'imprimante
+// Mise à jour du statut de l'imprimante avec informations essentielles
 function updatePrinterStatus(statusData) {
     const statusEl = document.getElementById('printer-status');
 
@@ -85,57 +85,56 @@ function updatePrinterStatus(statusData) {
         mainStatus = '⚠️ Erreur';
         description = 'Problème de communication';
     } else {
-        // Déterminer le statut principal avec couleur appropriée
+        // Déterminer le statut principal avec détails essentiels
         switch (statusData.status) {
             case 'Ready':
                 statusEl.classList.add('status-ready');
                 mainStatus = '🟢 Prêt';
-                description = 'Imprimante opérationnelle';
+                description = 'Imprimante opérationnelle - Prêt à imprimer';
                 break;
             case 'Busy':
                 statusEl.classList.add('status-busy');
-                mainStatus = '🔵 Impression';
-                description = 'Tâche en cours';
+                mainStatus = '🔵 Impression en cours';
+                description = 'Tâche active sur l\'imprimante';
                 break;
             case 'Cooling':
                 statusEl.classList.add('status-cooling');
                 mainStatus = '🟠 Refroidissement';
-                description = 'Attente température';
+                description = 'Imprimante en pause technique (température élevée)';
                 break;
             case 'Cover Open':
                 statusEl.classList.add('status-cover-open');
                 mainStatus = '🟡 Couvercle ouvert';
-                description = 'Fermez pour continuer';
+                description = 'Veuillez fermer le capot pour continuer';
                 break;
             case 'Paper Empty':
                 statusEl.classList.add('status-paper-empty');
                 mainStatus = '🟡 Papier épuisé';
-                description = 'Recharge nécessaire';
+                description = 'Recharge nécessaire pour continuer';
                 break;
             default:
                 statusEl.classList.add('status-error');
-                mainStatus = '🔴 Inconnu';
-                description = 'Statut indéterminé';
+                mainStatus = '🔴 Statut inconnu';
+                description = 'Vérifiez la connexion de l\'imprimante';
         }
     }
 
-    // HTML minimal et fonctionnel
+    // HTML simple avec le statut et la description essentielle
     statusEl.innerHTML = `
         <div>${mainStatus}</div>
         <div>${description}</div>
     `;
 
-    // Gérer les boutons selon l'état général
+    // Contrôle des boutons selon l'état
     const pauseBtn = document.getElementById('pause-btn');
     const resumeBtn = document.getElementById('resume-btn');
 
-    // Désactiver en cas d'erreur ou de statut critique
+    // Désactiver les boutons en cas d'erreur ou problème matériel
     if (statusData.is_error || statusData.status === 'Disconnected' || statusData.status === 'Cooling') {
         pauseBtn.disabled = true;
         resumeBtn.disabled = true;
     } else {
-        // Activer uniquement si tout est OK
-        pauseBtn.disabled = false;
+        resumeBtn.disabled = false;
         resumeBtn.disabled = false;
     }
 }
