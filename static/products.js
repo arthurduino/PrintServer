@@ -114,7 +114,7 @@ class ProductApp {
                 </div>
                 <div class="product-info">
                     <h3>${product.nom}</h3>
-                    <p class="product-format">${product.format_type}mm - 0°</p>
+                    <p class="product-format">${product.format_type}mm</p>
                     ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                 </div>
                 <div class="product-actions">

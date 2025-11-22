@@ -235,7 +235,7 @@ function selectProduct(productId) {
     // Ajouter à la commande
     commandProducts.push({
         ...product,
-        quantity: 1 // Quantité par défaut
+        quantity: 50 // Quantité par défaut
     });
 
     // Masquer la recherche
