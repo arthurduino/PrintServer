@@ -95,37 +95,41 @@ function updateCurrentJob(jobs) {
     const currentJob = jobs.find(job => job.statut === 'PROCESSING');
 
     if (currentJob) {
-        // Afficher CHAQUE tâche en cours individuellement
-        const activeTasks = currentJob.taches.filter(task => task.statut === 'IN_PROGRESS' || task.statut === 'DONE');
+        // Afficher SEULEMENT la tâche réellement en cours d'impression (IN_PROGRESS)
+        const currentlyPrintingTask = currentJob.taches.find(task => task.statut === 'IN_PROGRESS');
 
-        if (activeTasks.length > 0) {
-            const tasksHtml = activeTasks.map(task => {
-                const taskProgress = task.quantite_totale > 0 ? (task.quantite_faite / task.quantite_totale) * 100 : 0;
-                const isTaskDone = task.quantite_faite >= task.quantite_totale;
-                const taskStatus = isTaskDone ? 'Terminée' : `Impression en cours`;
+        if (currentlyPrintingTask) {
+            const taskProgress = currentlyPrintingTask.quantite_totale > 0 ? (currentlyPrintingTask.quantite_faite / currentlyPrintingTask.quantite_totale) * 100 : 0;
 
-                return `
-                    <div class="current-task-item ${isTaskDone ? 'task-done' : ''}" style="border: 2px solid ${isTaskDone ? '#10b981' : '#f59e0b'}; padding: 10px; margin-bottom: 10px; border-radius: 8px;">
-                        <div style="font-weight: bold; margin-bottom: 5px;">
-                            Commande ${currentJob.id} - ${taskStatus}
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            ${task.type_tache} • ${task.quantite_faite}/${task.quantite_totale} exemplaires
-                        </div>
-                        <progress max="100" value="${taskProgress}" style="width: 100%; height: 8px;"></progress>
-                        <div style="margin-top: 5px; text-align: center; font-size: 0.9em;">
-                            ${task.quantite_faite}/${task.quantite_totale} (${taskProgress.toFixed(0)}%)
-                        </div>
+            jobDisplay.innerHTML = `
+                <div class="current-task-item" style="border: 2px solid #f59e0b; padding: 10px; border-radius: 8px;">
+                    <div style="font-weight: bold; margin-bottom: 5px;">
+                        Commande ${currentJob.id} - Impression en cours
                     </div>
-                `;
-            }).join('');
-
-            jobDisplay.innerHTML = `${tasksHtml}`;
+                    <div style="margin-bottom: 8px;">
+                        Tâche #${currentlyPrintingTask.id} • ${currentlyPrintingTask.type_tache} • ${currentlyPrintingTask.quantite_faite}/${currentlyPrintingTask.quantite_totale} exemplaires
+                    </div>
+                    <progress max="100" value="${taskProgress}" style="width: 100%; height: 8px;"></progress>
+                    <div style="margin-top: 5px; text-align: center; font-size: 0.9em;">
+                        ${currentlyPrintingTask.quantite_faite}/${currentlyPrintingTask.quantite_totale} (${taskProgress.toFixed(0)}%)
+                    </div>
+                    ${currentlyPrintingTask.config && currentlyPrintingTask.config.image_path ?
+                        `<div class="task-image-name" style="margin-top: 8px;">📄 ${currentlyPrintingTask.config.image_path}</div>` : ''}
+                </div>
+            `;
         } else {
-            // Pas de tâche active actuellement
+            // Commande PROCESSING mais aucune tâche IN_PROGRESS (en préparation)
+            const pendingTasksCount = currentJob.taches.filter(task => task.statut === 'PENDING').length;
+            const completedTasksCount = currentJob.taches.filter(task => task.statut === 'DONE').length;
+
             jobDisplay.innerHTML = `
                 <div class="current-task-item" style="border: 2px solid #6b7280; padding: 10px; border-radius: 8px;">
-                    Commande ${currentJob.id} en préparation - Aucune tâche active
+                    <div style="font-weight: bold; margin-bottom: 5px;">
+                        Commande ${currentJob.id} en préparation
+                    </div>
+                    <div style="font-size: 0.9em; color: #6b7280;">
+                        ${pendingTasksCount} tâche(s) en attente • ${completedTasksCount} terminée(s)
+                    </div>
                 </div>
             `;
         }
@@ -308,8 +312,33 @@ function showMessage(title, message) {
 
 // Fonction de suppression de tâche individuelle
 async function deleteTask(taskId) {
-    if (confirm(`Voulez-vous vraiment supprimer la tâche #${taskId} ?`)) {
-        showMessage('Info', 'Suppression individuelle en développement - Utilisez la page Commandes pour supprimer toute la commande');
+    if (confirm(`Voulez-vous vraiment supprimer la tâche #${taskId} ?\n\n⚠️ Cette action est irréversible.`)) {
+
+        console.log(`🗑️ [UI] Suppression de tâche ${taskId} demandée`);
+
+        try {
+            const response = await fetch(`/api/taches/${taskId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                console.log(`✅ [UI] Tâche ${taskId} supprimée avec succès`);
+                showMessage('Succès', result.message || `Tâche ${taskId} supprimée avec succès`);
+                // Rafraîchir l'interface
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                console.error(`❌ [UI] Erreur suppression tâche ${taskId}:`, result);
+                showMessage('Erreur', result.error || `Impossible de supprimer la tâche ${taskId}`);
+            }
+
+        } catch (error) {
+            console.error(`❌ [UI] Erreur réseau lors suppression tâche ${taskId}:`, error);
+            showMessage('Erreur', 'Erreur réseau - Impossible de supprimer la tâche');
+        }
     }
 }
 

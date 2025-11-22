@@ -453,6 +453,75 @@ async def delete_commande_api(commande_id: int):
         print(f"🗑️ [DELETE] Erreur suppression commande {commande_id}: {e}")
         return {"error": str(e)}
 
+@app.delete("/api/taches/{tache_id}")
+async def delete_tache_api(tache_id: int):
+    """Supprime une tâche individuelle (seulement si elle n'est pas en cours d'impression)."""
+    try:
+        # Récupérer les infos de la tâche pour vérification
+        print(f"🗑️ [TASK_DELETE] Tentative suppression tâche {tache_id}")
+
+        # Pour l'instant, on va utiliser une requête SQL directe pour récupérer le statut de la tâche
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.statut, t.commande_id, c.statut_global
+            FROM taches t
+            JOIN commandes c ON t.commande_id = c.id
+            WHERE t.id = ?
+        """, (tache_id,))
+        task_data = cursor.fetchone()
+        conn.close()
+
+        if not task_data:
+            print(f"🗑️ [TASK_DELETE] Tâche {tache_id} non trouvée")
+            return {"error": "Tâche non trouvée"}
+
+        task_status, command_id, command_status = task_data
+        print(f"🗑️ [TASK_DELETE] Tâche {tache_id}: statut='{task_status}', commande={command_id} (statut='{command_status}')")
+
+        # Vérifier si la tâche peut être supprimée
+        if task_status in ['PROCESSING', 'IN_PROGRESS']:
+            print(f"🗑️ [TASK_DELETE] Tâche {tache_id} en cours d'impression, suppression refusée")
+            return {"error": "Impossible de supprimer une tâche en cours d'impression"}
+
+        if command_status == 'PROCESSING':
+            print(f"🗑️ [TASK_DELETE] La commande {command_id} est en cours d'impression, suppression de tâche refusée")
+            return {"error": "Impossible de supprimer une tâche tant que la commande est en cours d'impression"}
+
+        # On peut supprimer la tâche - mais il faut décider quoi faire
+        # Option 1: Supprimer vraiment la tâche de la BDD
+        # Option 2: Réduire le nombre de tâches restantes de la commande
+
+        # Pour commencer, on va marquer la tâche comme "CANCELLED" au lieu de la supprimer
+        # (plus sûr que de supprimer définitivement)
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+
+        # Au lieu de supprimer, on marque comme CANCELLED (nouvelle logique plus sûre)
+        cursor.execute("UPDATE taches SET statut = 'CANCELLED' WHERE id = ?", (tache_id,))
+
+        # Vérifier si c'était la dernière tâche en attente de la commande
+        cursor.execute("""
+            SELECT COUNT(*) FROM taches
+            WHERE commande_id = ? AND statut IN ('PENDING', 'IN_PROGRESS')
+        """, (command_id,))
+        remaining_tasks = cursor.fetchone()[0]
+
+        if remaining_tasks == 0:
+            # Plus de tâches actives - marquer la commande comme DONE
+            cursor.execute("UPDATE commandes SET statut_global = 'DONE' WHERE id = ?", (command_id,))
+            print(f"🗑️ [TASK_DELETE] Dernière tâche supprimée - commande {command_id} marquée DONE")
+
+        conn.commit()
+        conn.close()
+
+        print(f"🗑️ [TASK_DELETE] Tâche {tache_id} supprimée avec succès (statut=CANCELLED)")
+        return {"message": f"Tâche {tache_id} supprimée"}
+
+    except Exception as e:
+        print(f"🗑️ [TASK_DELETE] Erreur suppression tâche {tache_id}: {e}")
+        return {"error": str(e)}
+
 # Point d'entrée pour lancer le serveur (si exécuté directement)
 if __name__ == "__main__":
     import uvicorn
