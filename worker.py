@@ -206,8 +206,8 @@ def _update_task_progress(task_id: int, qty_done: int):
     conn.commit()
     conn.close()
 
-def _set_task_cooling_until(task_id: int, cooling_until_timestamp: float):
-    """Définit le timestamp de fin de refroidissement pour une tâche."""
+def _get_task_progress(task_id: int) -> int:
+    """Récupère la quantité déjà faite pour une tâche (pour reprise après redémarrage)."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("UPDATE taches SET cooling_until = ? WHERE id = ?", (cooling_until_timestamp, task_id))
@@ -299,7 +299,7 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         'copies': 1,  # On gère les copies dans la boucle
         'model': MODEL,
         'label': str(config.get('label_type', '62')),
-        'rotate': '90',  # Toujours appliquer une rotation de 90° par rapport au fichier original
+        'rotate': '90',  # Toujours appliquer une rotation de 90° par défaut
         'print_script': None,
         # Options spéciales pour gros fichiers sombres
         'compress': True,  # Activer la compression
@@ -317,8 +317,11 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
     else:
         binary_data = form
 
-    qty_done = 0
-    for _ in range(qty_tot):
+    # 🔥 RÉCUPÉRATION DE LA PROGRESSION SAUVEGARDÉE 🔥
+    qty_done = _get_task_progress(task_id)  # Au lieu de commencer à 0 !
+    print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
+
+    for _ in range(qty_tot - qty_done):  # On termine seulement les impressions restantes !
         # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
         printer_status = printer.get_status()
         if printer_status.get('is_cooling', False):

@@ -114,7 +114,16 @@ function updateCurrentJob(jobs) {
                         ${currentlyPrintingTask.quantite_faite}/${currentlyPrintingTask.quantite_totale} (${taskProgress.toFixed(0)}%)
                     </div>
                     ${currentlyPrintingTask.config && currentlyPrintingTask.config.image_path ?
-                        `<div class="task-image-name" style="margin-top: 8px;">📄 ${currentlyPrintingTask.config.image_path}</div>` : ''}
+                        (() => {
+                            const filename = currentlyPrintingTask.config.image_path.split('/').pop();
+                            return `
+                                <div class="task-image-preview" style="margin-top: 8px; text-align: center;">
+                                    <img src="/uploads/${filename}" alt="Image en cours - ${filename}"
+                                         style="max-width: 120px; max-height: 60px; border: 1px solid #ddd; border-radius: 4px;"
+                                         onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=font-size:0.8em;color:#666;>📄 ${filename}</div>'">
+                                </div>
+                            `;
+                        })() : ''}
                 </div>
             `;
         } else {
