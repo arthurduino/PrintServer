@@ -67,9 +67,10 @@ function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
     const pendingTasks = [];
 
-    jobs.filter(job => job.statut === 'PENDING').forEach(job => {
+    jobs.forEach(job => {
         job.taches.forEach(task => {
-            if (task.quantite_faite < task.quantite_totale) {
+            // Afficher seulement les tâches en attente d'impression (statut PENDING ou IN_PROGRESS)
+            if ((task.statut === 'PENDING' || task.statut === 'IN_PROGRESS') && task.quantite_faite < task.quantite_totale) {
                 pendingTasks.push({
                     jobId: job.id,
                     clientName: job.nom_client,
