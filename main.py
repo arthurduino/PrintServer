@@ -131,11 +131,32 @@ async def create_job(
     files: List[UploadFile] = File(..., description="Fichiers images à uploader")
 ):
     """Crée une nouvelle commande avec ses tâches, gère l'upload des images."""
-    print(f"📨 Reçu command_json: {command_json}")  # Debug
+    print(f"📨 [DEBUG] Reçu command_json: {command_json}")  # Debug
+
+    # Debugger les paramètres reçus
+    print(f"📨 [DEBUG] files count: {len(files) if files else 0}")  # Debug
+    for i, file in enumerate(files or []):
+        print(f"📨 [DEBUG] File {i}: {file.filename}, size: {getattr(file, 'size', 'unknown')}")  # Debug
+
     try:
         command_data = json.loads(command_json)
+        print(f"📋 [DEBUG] Données parsées: {json.dumps(command_data, indent=2)}")  # Debug
+
+        # Validation des données
+        if "taches" not in command_data:
+            print("❌ [DEBUG] Erreur: pas de 'taches' dans les données")
+            return {"error": "Données manquantes: taches"}
+
+        for i, task in enumerate(command_data["taches"]):
+            print(f"📋 [DEBUG] Tâche {i}: {task}")
+            required_fields = ["type", "quantite", "config"]
+            for field in required_fields:
+                if field not in task:
+                    print(f"❌ [DEBUG] Erreur: tâche {i} manque le champ '{field}'")
+                    return {"error": f"Tâche {i} manquante champ: {field}"}
+
     except json.JSONDecodeError as e:
-        print(f"❌ Erreur JSON: {e}")  # Debug
+        print(f"❌ [DEBUG] Erreur JSON parsing: {e}")  # Debug
         return {"error": f"JSON invalide pour la commande: {str(e)}"}
 
     # Créer le dossier uploads s'il n'existe pas

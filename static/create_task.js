@@ -227,8 +227,18 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
     };
 
     const apiFormData = new FormData();
-    apiFormData.append('command_json', JSON.stringify(taskData));
+    const taskDataJson = JSON.stringify(taskData);
+    apiFormData.append('command_json', taskDataJson);
     files.forEach(file => apiFormData.append('files', file));
+
+    // Debug côté client
+    console.log('📤 [CLIENT DEBUG] Envoi vers /api/jobs:');
+    console.log('📤 [CLIENT DEBUG] taskData:', taskData);
+    console.log('📤 [CLIENT DEBUG] taskDataJson:', taskDataJson);
+    console.log('📤 [CLIENT DEBUG] files count:', files.length);
+    files.forEach((file, i) => {
+        console.log(`📤 [CLIENT DEBUG] File ${i}: ${file.name}, size: ${file.size} bytes`);
+    });
 
     const submitBtn = event.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
@@ -239,6 +249,8 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             method: 'POST',
             body: apiFormData
         });
+
+        console.log('📥 [CLIENT DEBUG] Réponse HTTP:', response.status, response.statusText);
 
         const result = await response.json();
 
