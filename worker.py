@@ -286,7 +286,7 @@ def _check_command_completion(cmd_id: int):
     conn.close()
 
 def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : imprime multiples copies de la même étiquette."""
+    """Traite une tâche BATCH : imprime multiples copies de la même étiquette avec chunking USB."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
 
@@ -311,18 +311,18 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         '600dpi': False,   # Utiliser 300dpi au lieu de 600dpi si possible
     }
 
-    # Rasterise une seule fois
+    # Rasterise une seule fois (brother_ql utilisé UNIQUEMENT pour la rastérisation)
     qlr = BrotherQLRaster(options['model'])
     form = convert(qlr, [image_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
 
-    # Gestion des différentes versions de brother_ql API
+    # Gestion des différentes versions de brother_ql API - EXTRACT DATA ONLY
     if hasattr(form, 'render'):
-        binary_data = form.render(options['print_script'])
+        raster_data = form.render(options['print_script'])
     else:
-        binary_data = form
+        raster_data = form
 
     # 🔥 RÉCUPÉRATION DE LA PROGRESSION SAUVEGARDÉE 🔥
-    qty_done = _get_task_progress(task_id)  # Au lieu de commencer à 0 !
+    qty_done = _get_task_progress(task_id)
     print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
 
     for _ in range(qty_tot - qty_done):  # On termine seulement les impressions restantes !
@@ -334,21 +334,17 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
             # Ne pas marquer la tâche en erreur, juste la mettre en pause
             return
 
-        print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
+        print(f"📤 Impression #{qty_done + 1}/{qty_tot} avec chunking USB...")
 
         try:
-            # Utiliser seulement la méthode brother_ql.send() - pas de méthode manuelle
-            send(
-                instructions=form,  # Données raster déjà préparées
-                printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
-                blocking=True  # Attendre la fin de l'impression
-            )
+            # 🔥 NOUVELLE APPROCHE : Utiliser le driver personnalisé avec chunking et flow control
+            printer.send_data_with_chunking(raster_data)
 
-            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
+            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION après chunking réussi
             print(f"⏳ Attente de la fin effective de l'impression #{qty_done + 1}...")
             _wait_for_print_completion(printer, timeout_seconds=30)
 
-            print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
+            print(f"Impression #{qty_done + 1} terminée avec succès via chunking")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
@@ -358,70 +354,39 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
 
             # Gestion spéciale pour les erreurs de ressource busy (imprimante occupée/verrouillée)
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"🔒 Linux a volé l'imprimante pour {task_id} ! Récupération en cours...")
+                print(f"🔒 Conflit ressource USB pour {task_id} ! Récupération avec chunking...")
                 # Tenter une récupération gentle (pas de reset destructif)
                 if printer.recuperer_connexion():
                     print("✅ Récupération connexion réussie, nouvelle tentative d'impression...")
-                    # Réessaie immédiatement sans délai
                     try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression #{qty_done + 1} réussie après récupération gentle")
+                        # Réessaie avec chunking après récupération
+                        printer.send_data_with_chunking(raster_data)
+                        print(f"Impression #{qty_done + 1} réussie après récupération et chunking")
                         qty_done += 1
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
-                        print(f"💥 Échec même après récupération gentle: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
+                        print(f"💥 Échec même après récupération avec chunking: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
                 else:
-                    print("⚠️ Récupération échouée, nouvel essai avec attente classique...")
-                    # Attente un peu plus courte maintenant que nous avons la bonne logique
-                    time.sleep(3)
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression #{qty_done + 1} réussie au deuxième essai")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"💥 Échec définitif même après attente: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
+                    print("⚠️ Récupération échouée, tâche marquée en erreur")
+                    _update_task_status(task_id, 'ERROR')
+                    _update_command_status(cmd_id, 'ERROR')
+                    return
             else:
                 # Autre type d'erreur - marquer comme erreur immédiatement
-                print(f"Tâche {task_id} marquée en erreur - passage à la suivante")
+                print(f"Tâche {task_id} marquée en erreur: {error_msg}")
                 _update_task_status(task_id, 'ERROR')
                 _update_command_status(cmd_id, 'ERROR')
                 return
 
-        # Délai entre impressions pour éviter surcharge
+        # Délai entre impressions pour éviter surcharge (augmenté légèrement pour chunking)
         if qty_done < qty_tot:
-            time.sleep(0.2)
+            time.sleep(0.5)
 
 def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche SERIES : imprime une série d'images différentes."""
+    """Traite une tâche SERIES : imprime une série d'images différentes avec chunking USB."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
 
@@ -442,7 +407,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
             # Ne pas marquer la tâche en erreur, juste la mettre en pause
             return
 
-        print(f"Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
+        print(f"📤 Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
 
         # Configuration des options par défaut pour chaque image
         options = {
@@ -457,19 +422,21 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
         qlr = BrotherQLRaster(options['model'])
         form = convert(qlr, [img_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
 
-        try:
-            # Utiliser seulement la méthode brother_ql.send()
-            send(
-                instructions=form,
-                printer_identifier="usb://04f9:2042",
-                blocking=True
-            )
+        # EXTRACT DATA FROM brother_ql for custom driver
+        if hasattr(form, 'render'):
+            raster_data = form.render(options['print_script'])
+        else:
+            raster_data = form
 
-            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
+        try:
+            # 🔥 NOUVELLE APPROCHE : Utiliser le driver personnalisé avec chunking et flow control
+            printer.send_data_with_chunking(raster_data)
+
+            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION après chunking réussi
             print(f"⏳ Attente de la fin effective de l'impression série #{qty_done + 1}...")
             _wait_for_print_completion(printer, timeout_seconds=30)
 
-            print(f"Impression série #{qty_done + 1} terminée avec succès")
+            print(f"Impression série #{qty_done + 1} terminée avec succès via chunking")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
@@ -479,71 +446,36 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
 
             # Gestion spéciale pour les erreurs de ressource busy
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"Imprimante occupée pour série {task_id} - récupération connexion...")
+                print(f"🔒 Conflit ressource USB pour série {task_id} ! Récupération avec chunking...")
                 if printer.recuperer_connexion():
                     print("Récupération connexion réussie pour série, nouvelle tentative...")
-                    time.sleep(1)  # Petite pause de sécurité
                     try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression série #{qty_done + 1} réussie après récupération")
+                        # Réessaie avec chunking après récupération
+                        printer.send_data_with_chunking(raster_data)
+                        print(f"Impression série #{qty_done + 1} réussie après récupération et chunking")
                         qty_done += 1
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
-                        print(f"Échec de la série même après récupération: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
+                        print(f"💥 Échec de la série même après récupération avec chunking: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
                 else:
-                    print("Récupération échouée pour série, nouvel essai avec attente classique...")
-                    time.sleep(10)
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression série #{qty_done + 1} réussie au deuxième essai classique")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"Échec définitif de la série même après attente classique: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
+                    print("⚠️ Récupération échouée pour série, tâche marquée en erreur")
+                    _update_task_status(task_id, 'ERROR')
+                    _update_command_status(cmd_id, 'ERROR')
+                    return
             else:
-                # Autre type d'erreur - effectuer une coupe préventive
-                print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
-                try:
-                    printer.cut_label(copies=1)
-                except Exception as cut_e:
-                    print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
+                # Autre type d'erreur - marquer comme erreur immédiatement
+                print(f"Tâche série {task_id} marquée en erreur: {error_msg}")
                 _update_task_status(task_id, 'ERROR')
                 _update_command_status(cmd_id, 'ERROR')
                 return
 
-        # Délai entre impressions pour éviter surcharge
+        # Délai entre impressions pour éviter surcharge (augmenté légèrement pour chunking)
         if qty_done < qty_tot:
-            time.sleep(0.2)
+            time.sleep(0.5)
+
 
 def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30):
     """Attend que l'imprimante ait terminé l'impression en cours.
@@ -585,6 +517,7 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
 
     print(f"❌ Timeout ({timeout_seconds}s) dépassé en attendant la fin de l'impression")
     return False
+
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # printer = PrinterDriver()
