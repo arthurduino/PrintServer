@@ -52,19 +52,32 @@ def _worker_loop(printer: PrinterDriver):
         # Vérifier si l'imprimante est en phase de refroidissement
         printer_status = printer.get_status()
         if printer_status.get('is_cooling', False):
-            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
-            _set_task_cooling_until(task_id, cooling_until)
-            print(f"🧊 Imprimante en refroidissement - tâche {task_id} en attente jusqu'à {time.ctime(cooling_until)}")
+            _set_task_cooling_wait(task_id)
+            print(f"🧊 Imprimante en refroidissement - tâche {task_id} mise en attente")
             time.sleep(0.1)
             continue
 
-        # Vérifier si cette tâche a encore du temps de refroidissement
-        task_cooling_until = _get_task_cooling_until(task_id)
-        if task_cooling_until and time.time() < task_cooling_until:
-            remaining = task_cooling_until - time.time()
-            print(f"🧊 Tâche {task_id} encore en période de refroidissement ({remaining:.1f}s restantes)")
-            time.sleep(0.1)
-            continue
+        # Vérifier si cette tâche attend encore la fin du refroidissement
+        if _is_task_waiting_cooling(task_id):
+            # Vérifier si l'imprimante n'est plus en refroidissement
+            printer_status = printer.get_status()
+            if not printer_status.get('is_cooling', False):
+                # Imprimante plus en refroidissement - ajouter un petit buffering de sécurité
+                _set_task_buffering_time(task_id, 3)  # 3 secondes de buffering
+                print(f"🧊 Imprimante sortie de refroidissement - tâche {task_id} en buffering 3s")
+            else:
+                print(f"🧊 Tâche {task_id} en attente - imprimante encore en refroidissement")
+                time.sleep(0.1)
+                continue
+
+            remaining_buffering = _get_task_buffering_seconds(task_id)
+            if remaining_buffering > 0:
+                print(f"🧊 Tâche {task_id} en buffering post-refroidissement ({remaining_buffering:.1f}s)")
+                time.sleep(0.1)
+                continue
+            else:
+                _clear_task_cooling_wait(task_id)
+                print(f"✅ Tâche {task_id} prête à reprendre après refroidissement")
 
         _set_processing(task_id, cmd_id)
 
@@ -151,8 +164,55 @@ def _set_task_cooling_until(task_id: int, cooling_until_timestamp: float):
     conn.commit()
     conn.close()
 
+def _set_task_cooling_wait(task_id: int):
+    """Marque une tâche comme en attente de fin de refroidissement de l'imprimante."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    # Utiliser le champ cooling_until comme flag négatif pour indiquer attente de cooling
+    cursor.execute("UPDATE taches SET cooling_until = -1 WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+
+def _is_task_waiting_cooling(task_id: int) -> bool:
+    """Vérifie si une tâche attend la fin du refroidissement."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT cooling_until FROM taches WHERE id = ?", (task_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result and result[0] == -1
+
+def _set_task_buffering_time(task_id: int, buffering_seconds: int = 5):
+    """Définit un temps de buffering après fin de refroidissement."""
+    buffering_until = time.time() + buffering_seconds
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE taches SET cooling_until = ? WHERE id = ?", (buffering_until, task_id))
+    conn.commit()
+    conn.close()
+
+def _get_task_buffering_seconds(task_id: int) -> float:
+    """Retourne le nombre de secondes restantes pour le buffering post-refroidissement."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT cooling_until FROM taches WHERE id = ?", (task_id,))
+    result = cursor.fetchone()
+    conn.close()
+    if result and result[0] and result[0] > 0:
+        remaining = result[0] - time.time()
+        return max(0, remaining)
+    return 0
+
+def _clear_task_cooling_wait(task_id: int):
+    """Efface tous les flags de refroidissement pour une tâche."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE taches SET cooling_until = 0 WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+
 def _get_task_cooling_until(task_id: int) -> Optional[float]:
-    """Récupère le timestamp de fin de refroidissement d'une tâche."""
+    """Récupère le timestamp de fin de refroidissement pour une tâche."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT cooling_until FROM taches WHERE id = ?", (task_id,))
@@ -212,9 +272,8 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
         printer_status = printer.get_status()
         if printer_status.get('is_cooling', False):
-            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
-            _set_task_cooling_until(task_id, cooling_until)
-            print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - pause jusqu'à {time.ctime(cooling_until)}")
+            _set_task_cooling_wait(task_id)
+            print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - mise en attente dynamique")
             # Ne pas marquer la tâche en erreur, juste la mettre en pause
             return
 
@@ -304,9 +363,8 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
         # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
         printer_status = printer.get_status()
         if printer_status.get('is_cooling', False):
-            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
-            _set_task_cooling_until(task_id, cooling_until)
-            print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - pause jusqu'à {time.ctime(cooling_until)}")
+            _set_task_cooling_wait(task_id)
+            print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - mise en attente dynamique")
             # Ne pas marquer la tâche en erreur, juste la mettre en pause
             return
 
