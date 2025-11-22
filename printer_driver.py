@@ -87,16 +87,16 @@ class USBListener(threading.Thread):
                     response = self.ep_in.read(32, timeout=1000)
 
                     if len(response) == 32:
+                        # Message complet - traiter silencieusement
                         self._process_status_message(response)
-                    else:
-                        print(f"⚠️ [LISTENER] Message incomplet: {len(response)} octets")
+                    # Note: Les messages incomplets sont ignorés silencieusement (comportement normal)
 
                 except usb.core.USBError as e:
                     if "timeout" in str(e).lower():
                         # Timeout normal - l'imprimante est silencieuse pendant le refroidissement
                         continue
                     else:
-                        print(f"❌ [LISTENER] Erreur USB: {e}")
+                        print(f"❌ [LISTENER] Erreur USB critique: {e}")
                         self.initialized = False
                         time.sleep(1)
 
