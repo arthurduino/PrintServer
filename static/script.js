@@ -113,22 +113,40 @@ function updateCurrentJob(jobs) {
 // Mise à jour de la file d'attente
 function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
-    const pendingJobs = jobs.filter(job => job.statut === 'PENDING');
 
-    // Afficher toutes les tâches en attente non traitées
-    if (pendingJobs.length === 0) {
+    // Collecter toutes les tâches individuelles en attente
+    const pendingTasks = [];
+    jobs.filter(job => job.statut === 'PENDING').forEach(job => {
+        job.taches.forEach(task => {
+            if (task.statut === 'PENDING') {  // Only show PENDING tasks
+                pendingTasks.push({
+                    jobId: job.id,
+                    clientName: job.nom_client,
+                    taskId: task.id,
+                    taskType: task.type_tache,
+                    quantity: task.quantite_totale,
+                    date: job.date_creation,
+                    config: task.config
+                });
+            }
+        });
+    });
+
+    // Afficher chaque tâche individuelle
+    if (pendingTasks.length === 0) {
         queueList.innerHTML = '<p>File vide</p>';
         return;
     }
 
-    queueList.innerHTML = pendingJobs.map(job => `
-        <div class="queue-item">
+    queueList.innerHTML = pendingTasks.map(task => `
+        <div class="queue-item" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
             <div class="info">
-                <strong>Commande #${job.id}</strong> - ${job.nom_client}
-                <br><small>${calculateQuantity(job)} exemplaires - ${new Date(job.date_creation).toLocaleString()}</small>
+                <strong>Tâche #${task.taskId}</strong> - ${task.clientName}
+                <br><small>${task.quantity} exemplaires - ${task.taskType} - ${new Date(task.date).toLocaleString()}</small>
             </div>
             <div class="queue-actions">
-                <span class="quantity">${calculateQuantity(job)}</span>
+                <span class="quantity">${task.quantity}</span>
+                <button class="delete-btn" onclick="deleteTask(${task.taskId})" title="Supprimer cette tâche">🗑️</button>
             </div>
         </div>
     `).join('');
@@ -241,6 +259,13 @@ function showMessage(title, message) {
     document.getElementById('message-title').textContent = title;
     document.getElementById('message-text').textContent = message;
     overlay.style.display = 'flex';
+}
+
+// Fonction de suppression de tâche individuelle
+async function deleteTask(taskId) {
+    if (confirm(`Voulez-vous vraiment supprimer la tâche #${taskId} ?`)) {
+        showMessage('Info', 'Suppression individuelle en développement - Utilisez la page Commandes pour supprimer toute la commande');
+    }
 }
 
 document.getElementById('message-close').addEventListener('click', () => {
