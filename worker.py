@@ -24,6 +24,9 @@ except ImportError as e:
 MODEL = 'QL-700'
 print(f"ModèleBrother QL-700: {MODEL}")
 
+# État global du worker
+paused = True  # True = actif, False = mis en pause
+
 def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
     thread = threading.Thread(target=_worker_loop, args=(printer,), daemon=True)
@@ -33,13 +36,35 @@ def run_worker(printer: PrinterDriver):
 def _worker_loop(printer: PrinterDriver):
     """Boucle principale du worker pour traiter les tâches."""
     while True:
+        # Vérifier si le worker est en pause - plus fréquemment pour une réponse instantanée
+        if not paused:
+            time.sleep(0.01)  # Sleep très court quand en pause pour réponse instantanée
+            continue
+
         task_data = _get_next_pending_task()
         if not task_data:
-            time.sleep(0.1)  # Délai réduit pour une meilleure réactivité du statut
+            time.sleep(0.01)  # Délai très court pour une meilleure réactivité du statut
             continue
 
         task_id, cmd_id, type_t, config_json, qty_tot, qty_done = task_data
         config = parse_config_json(config_json)
+
+        # Vérifier si l'imprimante est en phase de refroidissement
+        printer_status = printer.get_status()
+        if printer_status.get('is_cooling', False):
+            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
+            _set_task_cooling_until(task_id, cooling_until)
+            print(f"🧊 Imprimante en refroidissement - tâche {task_id} en attente jusqu'à {time.ctime(cooling_until)}")
+            time.sleep(0.1)
+            continue
+
+        # Vérifier si cette tâche a encore du temps de refroidissement
+        task_cooling_until = _get_task_cooling_until(task_id)
+        if task_cooling_until and time.time() < task_cooling_until:
+            remaining = task_cooling_until - time.time()
+            print(f"🧊 Tâche {task_id} encore en période de refroidissement ({remaining:.1f}s restantes)")
+            time.sleep(0.1)
+            continue
 
         _set_processing(task_id, cmd_id)
 
@@ -117,6 +142,23 @@ def _update_task_progress(task_id: int, qty_done: int):
     cursor.execute("UPDATE taches SET quantite_faite = ? WHERE id = ?", (qty_done, task_id))
     conn.commit()
     conn.close()
+
+def _set_task_cooling_until(task_id: int, cooling_until_timestamp: float):
+    """Définit le timestamp de fin de refroidissement pour une tâche."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE taches SET cooling_until = ? WHERE id = ?", (cooling_until_timestamp, task_id))
+    conn.commit()
+    conn.close()
+
+def _get_task_cooling_until(task_id: int) -> Optional[float]:
+    """Récupère le timestamp de fin de refroidissement d'une tâche."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT cooling_until FROM taches WHERE id = ?", (task_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result and result[0] and result[0] > 0 else None
 
 def _check_command_completion(cmd_id: int):
     """Vérifie si toutes les tâches de la commande sont DONE, si oui marque commande DONE."""

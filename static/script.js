@@ -1,5 +1,5 @@
 // Mise à jour périodique adaptative selon l'activité d'impression
-async function updateInterface(delay = 3000) {
+async function updateInterface(delay = 1000) {
     console.log(`🔄 [UPDATE] Mise à jour programmée dans ${delay}ms`);
 
     setTimeout(async () => {
@@ -26,15 +26,16 @@ async function updateInterface(delay = 3000) {
             updateCurrentJob(jobs);
             updateJobList(jobs);
 
-            // Programmer la prochaine mise à jour : toujours fréquente pour le statut
-            const nextDelay = 3000; // Toutes les 3 secondes pour réactivité optimale
-            console.log(`🔄 [UPDATE] Prochaine mise à jour dans ${nextDelay}ms`);
+            // Programmer la prochaine mise à jour : plus fréquent si impression en cours
+            const isPrinting = statusData.status === 'Busy' || jobs.some(job => job.statut === 'PROCESSING');
+            const nextDelay = isPrinting ? 500 : 1000; // 0.5s en impression, 1s sinon
+            console.log(`🔄 [UPDATE] Prochaine mise à jour dans ${nextDelay}ms (${isPrinting ? 'impression' : 'attente'})`);
             updateInterface(nextDelay);
 
         } catch (error) {
             console.error('❌ [UPDATE] Erreur mise à jour:', error);
-            // En cas d'erreur, attendre 5 secondes avant de réessayer
-            updateInterface(5000);
+            // En cas d'erreur, attendre 2 secondes avant de réessayer
+            updateInterface(2000);
         }
     }, delay);
 }
@@ -89,13 +90,14 @@ function updateCurrentJob(jobs) {
 
     if (currentJob) {
         const progress = calculateProgress(currentJob);
+        const progressText = calculateProgressText(currentJob);
         jobDisplay.innerHTML = `
             <div style="margin-bottom: 10px;">
                 <strong>${currentJob.id}</strong> - ${calculateQuantity(currentJob)} exemplaires
             </div>
             <progress max="100" value="${progress}"></progress>
             <div style="margin-top: 5px; text-align: center;">
-                ${progress.toFixed(1)}% complété
+                ${progressText} (${progress.toFixed(1)}%)
             </div>
         `;
     } else {
@@ -108,6 +110,7 @@ function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
     const pendingJobs = jobs.filter(job => job.statut === 'PENDING');
 
+    // Afficher toutes les tâches en attente non traitées
     if (pendingJobs.length === 0) {
         queueList.innerHTML = '<p>File vide</p>';
         return;
@@ -142,6 +145,19 @@ function calculateProgress(job) {
 // Calcul de la quantité totale
 function calculateQuantity(job) {
     return job.taches.reduce((sum, task) => sum + task.quantite_totale, 0);
+}
+
+// Calcul du texte de progression numérique (ex: "31/50")
+function calculateProgressText(job) {
+    let total = 0;
+    let done = 0;
+
+    job.taches.forEach(task => {
+        total += task.quantite_totale;
+        done += task.quantite_faite;
+    });
+
+    return `${done}/${total} complété`;
 }
 
 // Gestion du formulaire de création de tâche

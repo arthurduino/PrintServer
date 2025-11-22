@@ -53,7 +53,8 @@ async def startup_event():
 
         # Initialiser la base de données
         init_db()
-        print("Base de données initialisée.")
+        add_missing_columns_if_needed()
+        print("Base de données initialisée et mise à jour.")
 
         printer = PrinterDriver()
         run_worker(printer)

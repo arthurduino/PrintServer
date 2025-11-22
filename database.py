@@ -1,344 +1,234 @@
 import sqlite3
 import json
+import os
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Optional, Dict, Any
 
-DB_FILE = 'printserver.db'
+# Configuration de la base de données
+DB_FILE = "printserver.db"
 
 def init_db():
-    """Initialise la base de données et crée les tables si elles n'existent pas."""
+    """Initialise la base de données avec toutes les tables nécessaires."""
+    print("Initialisation de la base de données...")
+
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # Création de la table commandes
+    # Table commandes
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS commandes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom_client TEXT NOT NULL,
             reference_externe TEXT,
-            date_creation TEXT DEFAULT CURRENT_TIMESTAMP,
-            statut_global TEXT NOT NULL CHECK(statut_global IN ('PENDING', 'PROCESSING', 'DONE', 'ERROR')),
-            type_commande TEXT DEFAULT 'REGULAR' CHECK(type_commande IN ('SIMPLE_TASK', 'REGULAR'))
+            date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            statut_global TEXT DEFAULT 'PENDING',
+            type_commande TEXT DEFAULT 'SIMPLE_TASK'
         )
     ''')
 
-    # Création de la table taches
+    # Table taches
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS taches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             commande_id INTEGER NOT NULL,
             ordre INTEGER NOT NULL,
-            priorite INTEGER DEFAULT 1,  -- Niveau de priorité (1=normal, 2=haute, 3=urgente)
-            type_tache TEXT NOT NULL CHECK(type_tache IN ('BATCH', 'SERIES')),
-            config_json TEXT,  -- Stocké comme chaîne JSON
+            type_tache TEXT NOT NULL,
+            config_json TEXT NOT NULL,
             quantite_totale INTEGER NOT NULL,
             quantite_faite INTEGER DEFAULT 0,
-            statut TEXT NOT NULL CHECK(statut IN ('PENDING', 'IN_PROGRESS', 'DONE', 'ERROR')),
-            FOREIGN KEY(commande_id) REFERENCES commandes(id) ON DELETE CASCADE
+            statut TEXT DEFAULT 'PENDING',
+            date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            priorite INTEGER DEFAULT 1,
+            cooling_until REAL DEFAULT 0,
+            FOREIGN KEY (commande_id) REFERENCES commandes (id)
         )
     ''')
 
-    # Création de la table produits (autocollants enregistrés)
+    # Table produits (autocollants enregistrés)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS products (
+        CREATE TABLE IF NOT EXISTS produits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL,
             description TEXT,
-            format_type TEXT NOT NULL CHECK(format_type IN ('62', '48', '30')),
-            rotation INTEGER NOT NULL CHECK(rotation IN (0, 90, 180, 270)),
+            format_type TEXT NOT NULL,
+            rotation INTEGER DEFAULT 0,
             image_path TEXT NOT NULL,
-            date_creation TEXT DEFAULT CURRENT_TIMESTAMP,
+            date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             actif BOOLEAN DEFAULT 1
         )
     ''')
 
-    # Vérifier et migrer les colonnes manquantes
-    _migrate_database()
-
     conn.commit()
     conn.close()
+    print("Base de données initialisée avec succès.")
 
-# Fonctions CRUD pour commandes
-
-def create_commande(nom_client: str, reference_externe: Optional[str] = None) -> int:
-    """Crée une nouvelle commande et retourne l'id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    date_creation = datetime.utcnow().isoformat()
-    statut_global = 'PENDING'
-    cursor.execute('''
-        INSERT INTO commandes (nom_client, reference_externe, date_creation, statut_global)
-        VALUES (?, ?, ?, ?)
-    ''', (nom_client, reference_externe, date_creation, statut_global))
-    commande_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return commande_id
-
-def get_commandes() -> List[Tuple]:
-    """Retourne toutes les commandes."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global FROM commandes')
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def get_commande(commande_id: int) -> Tuple:
-    """Retourne une commande par id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global FROM commandes WHERE id = ?', (commande_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row
-
-def update_commande_statut(commande_id: int, statut: str):
-    """Met à jour le statut d'une commande."""
-    if statut not in ['PENDING', 'PROCESSING', 'DONE', 'ERROR']:
-        raise ValueError("Statut invalide")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE commandes SET statut_global = ? WHERE id = ?', (statut, commande_id))
-    conn.commit()
-    conn.close()
-
-def delete_commande(commande_id: int):
-    """Supprime une commande (et ses tâches via CASCADE)."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM commandes WHERE id = ?', (commande_id,))
-    conn.commit()
-    conn.close()
-
-# Fonctions CRUD pour taches
-
-def create_tache(commande_id: int, ordre: int, type_tache: str, config: dict, quantite_totale: int) -> int:
-    """Crée une nouvelle tâche et retourne l'id."""
-    if type_tache not in ['BATCH', 'SERIES']:
-        raise ValueError("Type de tâche invalide")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    config_json = json.dumps(config) if config else None
-    statut = 'PENDING'
-    cursor.execute('''
-        INSERT INTO taches (commande_id, ordre, type_tache, config_json, quantite_totale, statut)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (commande_id, ordre, type_tache, config_json, quantite_totale, statut))
-    tache_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return tache_id
-
-def get_taches_by_commande(commande_id: int) -> List[Tuple]:
-    """Retourne toutes les tâches d'une commande."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, commande_id, ordre, type_tache, config_json, quantite_totale, quantite_faite, statut FROM taches WHERE commande_id = ? ORDER BY ordre', (commande_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def get_tache(tache_id: int) -> Tuple:
-    """Retourne une tâche par id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, commande_id, ordre, type_tache, config_json, quantite_totale, quantite_faite, statut FROM taches WHERE id = ?', (tache_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row
-
-def update_tache_statut(tache_id: int, statut: str):
-    """Met à jour le statut d'une tâche."""
-    if statut not in ['PENDING', 'IN_PROGRESS', 'DONE', 'ERROR']:
-        raise ValueError("Statut invalide")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE taches SET statut = ? WHERE id = ?', (statut, tache_id))
-    conn.commit()
-    conn.close()
-
-def update_tache_progress(tache_id: int, quantite_faite: int):
-    """Met à jour la quantité faite d'une tâche."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE taches SET quantite_faite = ? WHERE id = ?', (quantite_faite, tache_id))
-    conn.commit()
-    conn.close()
-
-def update_tache_priorite(tache_id: int, priorite: int):
-    """Met à jour la priorité d'une tâche."""
-    if priorite not in [1, 2, 3]:
-        raise ValueError("Priorité invalide (1-3)")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE taches SET priorite = ? WHERE id = ?', (priorite, tache_id))
-    conn.commit()
-    conn.close()
-
-def delete_tache(tache_id: int):
-    """Supprime une tâche."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM taches WHERE id = ?', (tache_id,))
-    conn.commit()
-    conn.close()
-
-# Fonctions CRUD pour produits (autocollants enregistrés)
-
-def create_product(nom: str, description: Optional[str], format_type: str, rotation: int, image_path: str) -> int:
-    """Crée un nouveau produit et retourne l'id."""
-    if format_type not in ['62', '48', '30']:
-        raise ValueError("Format invalide")
-    if rotation not in [0, 90, 180, 270]:
-        raise ValueError("Rotation invalide")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO products (nom, description, format_type, rotation, image_path, actif)
-        VALUES (?, ?, ?, ?, ?, 1)
-    ''', (nom, description, format_type, rotation, image_path))
-    product_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return product_id
-
-def get_products(actif_only: bool = True) -> List[Tuple]:
-    """Retourne tous les produits (actifs seulement par défaut)."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if actif_only:
-        cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation FROM products WHERE actif = 1 ORDER BY date_creation DESC')
-    else:
-        cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation, actif FROM products ORDER BY date_creation DESC')
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def get_product(product_id: int) -> Tuple:
-    """Retourne un produit par id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, nom, description, format_type, rotation, image_path, date_creation, actif FROM products WHERE id = ?', (product_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row
-
-def update_product(product_id: int, nom: str, description: Optional[str], format_type: str, rotation: int):
-    """Met à jour un produit."""
-    if format_type not in ['62', '48', '30']:
-        raise ValueError("Format invalide")
-    if rotation not in [0, 90, 180, 270]:
-        raise ValueError("Rotation invalide")
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE products
-        SET nom = ?, description = ?, format_type = ?, rotation = ?
-        WHERE id = ?
-    ''', (nom, description, format_type, rotation, product_id))
-    conn.commit()
-    conn.close()
-
-def delete_product(product_id: int):
-    """Supprime (désactive) un produit au lieu de le supprimer vraiment."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE products SET actif = 0 WHERE id = ?', (product_id,))
-    conn.commit()
-    conn.close()
-
-def get_product_image_path(product_id: int) -> str:
-    """Retourne le chemin de l'image d'un produit."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT image_path FROM products WHERE id = ? AND actif = 1', (product_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row[0] if row else None
-
-# Fonction utilitaire pour parser config_json
-def parse_config_json(config_json) -> dict:
-    """Parse la config JSON."""
-    if not config_json:
-        return {}
-    if isinstance(config_json, str):
-        return json.loads(config_json)
-    # Si c'est déjà un dict (ou autre type), retourner tel quel
-    if isinstance(config_json, dict):
-        return config_json
-    # Pour gérer les anciens enregistrements avec des int ou autres types
-    return {}
-
-def create_commande(nom_client: str, reference_externe: Optional[str] = None, type_commande: str = 'REGULAR') -> int:
-    """Crée une nouvelle commande et retourne l'id."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    date_creation = datetime.utcnow().isoformat()
-    statut_global = 'PENDING'
-    cursor.execute('''
-        INSERT INTO commandes (nom_client, reference_externe, date_creation, statut_global, type_commande)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (nom_client, reference_externe, date_creation, statut_global, type_commande))
-    commande_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return commande_id
-
-def get_commandes(type_commande: str = None) -> List[Tuple]:
-    """Retourne toutes les commandes ou filtrées par type."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    if type_commande:
-        cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global, type_commande FROM commandes WHERE type_commande = ? ORDER BY id DESC', (type_commande,))
-    else:
-        cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global, type_commande FROM commandes ORDER BY id DESC')
-
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def _migrate_database():
-    """Migration pour ajouter les colonnes manquantes aux tables existantes."""
+def add_missing_columns_if_needed():
+    """Ajoute les colonnes manquantes à la base de données si elles n'existent pas."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     try:
-        # Vérifier les colonnes manquantes dans la table commandes
-        cursor.execute("PRAGMA table_info(commandes)")
-        columns = [column[1] for column in cursor.fetchall()]
-
-        if 'type_commande' not in columns:
-            print("Migration: Ajout de la colonne 'type_commande' à la table 'commandes'")
-            cursor.execute('ALTER TABLE commandes ADD COLUMN type_commande TEXT DEFAULT \'REGULAR\'')
-            # Mettre à jour les commandes existantes qui ont plusieurs tâches comme "REGULAR"
-            cursor.execute('''
-                UPDATE commandes SET type_commande = 'REGULAR'
-                WHERE id IN (
-                    SELECT commande_id FROM taches
-                    GROUP BY commande_id HAVING COUNT(*) > 1
-                )
-            ''')
-            # Mettre les autres comme "SIMPLE_TASK"
-            cursor.execute('''
-                UPDATE commandes SET type_commande = 'SIMPLE_TASK'
-                WHERE type_commande IS NULL OR type_commande = 'REGULAR' AND id NOT IN (
-                    SELECT commande_id FROM taches
-                    GROUP BY commande_id HAVING COUNT(*) > 1
-                )
-            ''')
-
-        # Vérifier si la colonne priorite existe dans la table taches
+        # Vérifier si la colonne priorite existe
         cursor.execute("PRAGMA table_info(taches)")
-        columns = [column[1] for column in cursor.fetchall()]
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
 
-        if 'priorite' not in columns:
-            print("Migration: Ajout de la colonne 'priorite' à la table 'taches'")
-            cursor.execute('ALTER TABLE taches ADD COLUMN priorite INTEGER DEFAULT 1')
+        if 'priorite' not in column_names:
+            print("Ajout de la colonne 'priorite' à la table taches...")
+            cursor.execute("ALTER TABLE taches ADD COLUMN priorite INTEGER DEFAULT 1")
+            print("Colonne 'priorite' ajoutée.")
 
-    except sqlite3.OperationalError as e:
-        print(f"Erreur lors de la migration: {e}")
+        # Vérifier si la colonne cooling_until existe
+        if 'cooling_until' not in column_names:
+            print("Ajout de la colonne 'cooling_until' à la table taches...")
+            cursor.execute("ALTER TABLE taches ADD COLUMN cooling_until REAL DEFAULT 0")
+            print("Colonne 'cooling_until' ajoutée.")
 
+        conn.commit()
+
+    except Exception as e:
+        print(f"Erreur lors de l'ajout des colonnes: {e}")
+    finally:
+        conn.close()
+
+# Fonctions de gestion des commandes
+def create_commande(nom_client: str, reference_externe: Optional[str] = None, type_commande: str = 'SIMPLE_TASK') -> int:
+    """Crée une nouvelle commande et retourne son ID."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO commandes (nom_client, reference_externe, type_commande) VALUES (?, ?, ?)",
+        (nom_client, reference_externe, type_commande)
+    )
+    cmd_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return cmd_id
+
+def get_commandes(type_commande: Optional[str] = None) -> List[tuple]:
+    """Récupère toutes les commandes, optionnellement filtrées par type."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    if type_commande:
+        cursor.execute("SELECT * FROM commandes WHERE type_commande = ? ORDER BY id DESC", (type_commande,))
+    else:
+        cursor.execute("SELECT * FROM commandes ORDER BY id DESC")
+
+    commands = cursor.fetchall()
+    conn.close()
+    return commands
+
+def get_commande(commande_id: int) -> Optional[tuple]:
+    """Récupère une commande spécifique par son ID."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM commandes WHERE id = ?", (commande_id,))
+    commande = cursor.fetchone()
+    conn.close()
+    return commande
+
+def delete_commande(commande_id: int):
+    """Supprime une commande et toutes ses tâches associées."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM taches WHERE commande_id = ?", (commande_id,))
+    cursor.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))
+    conn.commit()
+    conn.close()
+
+# Fonctions de gestion des tâches
+def create_tache(commande_id: int, ordre: int, type_tache: str, config: Dict[str, Any], quantite: int) -> int:
+    """Crée une nouvelle tâche pour une commande donnée."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO taches (commande_id, ordre, type_tache, config_json, quantite_totale) VALUES (?, ?, ?, ?, ?)",
+        (commande_id, ordre, type_tache, json.dumps(config), quantite)
+    )
+    task_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+def get_taches_by_commande(commande_id: int) -> List[tuple]:
+    """Récupère toutes les tâches d'une commande."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM taches WHERE commande_id = ? ORDER BY ordre", (commande_id,))
+    tasks = cursor.fetchall()
+    conn.close()
+    return tasks
+
+def parse_config_json(config_json: str) -> Dict[str, Any]:
+    """Parse le JSON de configuration d'une tâche."""
+    try:
+        return json.loads(config_json)
+    except json.JSONDecodeError:
+        return {}
+
+# Fonctions de gestion des produits
+def create_product(nom: str, description: Optional[str], format_type: str, rotation: int, image_path: str) -> int:
+    """Crée un nouveau produit."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO produits (nom, description, format_type, rotation, image_path) VALUES (?, ?, ?, ?, ?)",
+        (nom, description, format_type, rotation, image_path)
+    )
+    product_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    print(f"Produit créé avec ID: {product_id}")
+    return product_id
+
+def get_products(actif_only: bool = True) -> List[tuple]:
+    """Récupère tous les produits."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    if actif_only:
+        cursor.execute("SELECT * FROM produits WHERE actif = 1 ORDER BY date_creation DESC")
+    else:
+        cursor.execute("SELECT * FROM produits ORDER BY date_creation DESC")
+
+    products = cursor.fetchall()
+    conn.close()
+    return products
+
+def get_product(product_id: int) -> Optional[tuple]:
+    """Récupère un produit spécifique."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM produits WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+    conn.close()
+    return product
+
+def get_product_image_path(product_id: int) -> Optional[str]:
+    """Récupère le chemin d'image d'un produit."""
+    product = get_product(product_id)
+    return product[5] if product else None
+
+def update_product(product_id: int, nom: str, description: Optional[str], format_type: str, rotation: int) -> bool:
+    """Met à jour un produit existant."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE produits SET nom = ?, description = ?, format_type = ?, rotation = ? WHERE id = ?",
+        (nom, description, format_type, rotation, product_id)
+    )
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+def delete_product(product_id: int) -> bool:
+    """Désactive un produit (soft delete)."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE produits SET actif = 0 WHERE id = ?", (product_id,))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
