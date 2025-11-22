@@ -66,129 +66,75 @@ document.addEventListener('DOMContentLoaded', () => {
 // Variable globale pour l'état du worker
 let workerPausedState = false;
 
-// Mise à jour détaillée du statut de l'imprimante
+// Mise à jour simple et épurée du statut de l'imprimante
 function updatePrinterStatus(statusData) {
     const statusEl = document.getElementById('printer-status');
 
     // Supprimer les classes précédentes
     statusEl.classList.remove('status-ready', 'status-busy', 'status-cooling', 'status-cover-open', 'status-paper-empty', 'status-error', 'status-disconnected');
 
-    let statusClass = '';
     let mainStatus = '';
     let description = '';
-    let flags = [];
-    let codeDisplay = '';
 
     if (statusData.status === 'Disconnected') {
-        statusClass = 'status-disconnected';
-        mainStatus = '❌ IMPRIMANTE DÉCONNECTÉE';
-        description = statusData.detail || 'Aucune connexion établie';
-        flags = [{ text: 'Déconnectée', type: 'error' }];
+        statusEl.classList.add('status-disconnected');
+        mainStatus = '❌ Déconnectée';
+        description = 'Imprimante non détectée';
     } else if (statusData.is_error) {
-        statusClass = 'status-error';
-        mainStatus = '⚠️ ERREUR DE COMMUNICATION';
-        description = statusData.detail || 'Erreur inconnue';
-        flags = [{ text: 'Erreur système', type: 'error' }];
-        if (statusData.phase) {
-            codeDisplay = statusData.phase;
-        }
+        statusEl.classList.add('status-error');
+        mainStatus = '⚠️ Erreur';
+        description = 'Problème de communication';
     } else {
-        // Déterminer la classe CSS basée sur le statut
+        // Déterminer le statut principal avec couleur appropriée
         switch (statusData.status) {
             case 'Ready':
-                statusClass = 'status-ready';
-                mainStatus = '🟢 PRÊT';
-                flags.push({ text: 'Machine prête', type: 'positive' });
+                statusEl.classList.add('status-ready');
+                mainStatus = '🟢 Prêt';
+                description = 'Imprimante opérationnelle';
                 break;
             case 'Busy':
-                statusClass = 'status-busy';
-                mainStatus = '🔵 OCCUPÉ';
-                flags.push({ text: 'Impression active', type: 'neutral' });
+                statusEl.classList.add('status-busy');
+                mainStatus = '🔵 Impression';
+                description = 'Tâche en cours';
                 break;
             case 'Cooling':
-                statusClass = 'status-cooling';
-                mainStatus = '🟠 REFROIDISSEMENT';
-                flags.push({ text: 'Machine en chauffe', type: 'warning' });
+                statusEl.classList.add('status-cooling');
+                mainStatus = '🟠 Refroidissement';
+                description = 'Attente température';
                 break;
             case 'Cover Open':
-                statusClass = 'status-cover-open';
-                mainStatus = '🟡 COUVERCLE OUVERT';
-                flags.push({ text: 'Accès nécessaire', type: 'warning' });
+                statusEl.classList.add('status-cover-open');
+                mainStatus = '🟡 Couvercle ouvert';
+                description = 'Fermez pour continuer';
                 break;
             case 'Paper Empty':
-                statusClass = 'status-paper-empty';
-                mainStatus = '🟡 PAPIER ÉPUISÉ';
-                flags.push({ text: 'Recharge nécessaire', type: 'warning' });
+                statusEl.classList.add('status-paper-empty');
+                mainStatus = '🟡 Papier épuisé';
+                description = 'Recharge nécessaire';
                 break;
             default:
-                statusClass = 'status-error';
-                mainStatus = '🔴 STATUS INCONNU';
-        }
-
-        description = statusData.detail || '';
-
-        // Ajouter les flags individuels
-        if (statusData.cover_open) {
-            flags.push({ text: 'Couvercle ouvert', type: 'warning' });
-        }
-        if (statusData.paper_empty) {
-            flags.push({ text: 'Papier vide', type: 'warning' });
-        }
-        if (statusData.is_cooling) {
-            flags.push({ text: 'Refroidissement actif', type: 'warning' });
-        }
-        if (statusData.is_busy) {
-            flags.push({ text: 'Imprimante active', type: 'neutral' });
-        }
-
-        // Afficher le code brut si disponible
-        if (statusData.raw_phase !== undefined) {
-            codeDisplay = statusData.raw_phase.toString();
+                statusEl.classList.add('status-error');
+                mainStatus = '🔴 Inconnu';
+                description = 'Statut indéterminé';
         }
     }
 
-    // Ajouter la classe CSS du statut principal
-    if (statusClass) {
-        statusEl.classList.add(statusClass);
-    }
-
-    // Construire le HTML avec les classes appropriées
-    let flagsHTML = '';
-    if (flags.length > 0) {
-        flagsHTML = `<div class="status-flags">
-            ${flags.map(flag => {
-                let flagClass = 'status-flag';
-                switch (flag.type) {
-                    case 'positive': flagClass += ' positive'; break;
-                    case 'warning': flagClass += ' warning'; break;
-                    case 'error': flagClass += ' status-error'; break;
-                    default: flagClass += ' neutral'; break;
-                }
-                return `<span class="${flagClass}">${flag.text}</span>`;
-            }).join('')}
-        </div>`;
-    }
-
-    let codeHTML = '';
-    if (codeDisplay) {
-        codeHTML = `<div class="status-code-display">Code: ${codeDisplay}</div>`;
-    }
-
+    // HTML minimal et fonctionnel
     statusEl.innerHTML = `
         <div>${mainStatus}</div>
         <div>${description}</div>
-        ${flagsHTML}
-        ${codeHTML}
     `;
 
-    // Gérer les boutons selon le statut et les erreurs
+    // Gérer les boutons selon l'état général
     const pauseBtn = document.getElementById('pause-btn');
     const resumeBtn = document.getElementById('resume-btn');
 
+    // Désactiver en cas d'erreur ou de statut critique
     if (statusData.is_error || statusData.status === 'Disconnected' || statusData.status === 'Cooling') {
         pauseBtn.disabled = true;
         resumeBtn.disabled = true;
     } else {
+        // Activer uniquement si tout est OK
         pauseBtn.disabled = false;
         resumeBtn.disabled = false;
     }
