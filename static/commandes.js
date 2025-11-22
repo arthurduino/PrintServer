@@ -5,33 +5,38 @@ document.addEventListener('DOMContentLoaded', function() {
     let commandProducts = [];
 
     // Événements principaux
-    document.getElementById('new-command-btn').addEventListener('click', showCommandModal);
-    document.getElementById('cancel-btn').addEventListener('click', hideCommandModal);
-    document.querySelector('.modal-close').addEventListener('click', hideCommandModal);
-    document.getElementById('save-btn').addEventListener('click', saveCommand);
+    document.getElementById('command-form').addEventListener('submit', handleCommandSubmit);
 
     // Recherche de produits
     document.getElementById('product-search').addEventListener('input', searchProducts);
 
+    // Modal détails
+    document.getElementById('close-details-btn').addEventListener('click', hideDetailsModal);
+    document.getElementById('delete-command-btn').addEventListener('click', deleteSelectedCommand);
+
+    // Fermeture du modal en cliquant sur la croix
+    document.querySelectorAll('.modal-close').forEach(closeBtn => {
+        closeBtn.addEventListener('click', function() {
+            this.closest('.modal').style.display = 'none';
+        });
+    });
+
     // Fermeture du modal en cliquant en dehors
-    document.getElementById('command-modal').addEventListener('click', function(e) {
+    document.getElementById('command-details-modal').addEventListener('click', function(e) {
         if (e.target === this) {
-            hideCommandModal();
+            hideDetailsModal();
         }
     });
 
     // Chargement initial
     loadCommands();
     loadProducts();
-
-    // Mise à jour périodique des commandes
-    setInterval(loadCommands, 5000);
 });
 
 // Chargement des commandes
 async function loadCommands() {
     try {
-        const response = await fetch('/api/jobs');
+        const response = await fetch('/api/commandes');
         const commands = await response.json();
 
         const container = document.getElementById('commands-list');
@@ -54,7 +59,7 @@ async function loadCommands() {
                 </div>
                 <div class="command-actions">
                     <button onclick="viewCommandDetails(${cmd.id})" class="btn btn-secondary btn-small">Détails</button>
-                    ${cmd.statut === 'PENDING' ? `<button onclick="cancelCommand(${cmd.id})" class="btn btn-danger btn-small">Annuler</button>` : ''}
+                    ${cmd.statut === 'PENDING' ? `<button onclick="deleteCommand(${cmd.id})" class="btn btn-danger btn-small">Supprimer</button>` : ''}
                 </div>
             </div>
         `).join('');
@@ -85,6 +90,71 @@ function getCommandProgress(tasks) {
     const completedTasks = tasks.filter(t => t.statut === 'DONE').length;
 
     return `${completedTasks}/${totalTasks} terminées`;
+}
+
+// Gestionnaire de soumission du formulaire de commande
+async function handleCommandSubmit(event) {
+    event.preventDefault();
+
+    const nomClient = document.getElementById('nom_client').value.trim();
+    const referenceExterne = document.getElementById('reference_externe').value.trim();
+
+    if (!nomClient) {
+        showMessage('Erreur', 'Veuillez saisir le nom du client');
+        return;
+    }
+
+    if (commandProducts.length === 0) {
+        showMessage('Erreur', 'Veuillez ajouter au moins un produit à la commande');
+        return;
+    }
+
+    // Préparer les données
+    const commandData = {
+        nom_client: nomClient,
+        reference_externe: referenceExterne || null,
+        taches: commandProducts.map(product => ({
+            type: "BATCH",
+            quantite: product.quantity,
+            config: {
+                product_id: product.id,
+                label_type: product.format_type,
+                rotate: product.rotation.toString()
+            }
+        }))
+    };
+
+    document.querySelector('#command-form button[type="submit"]').disabled = true;
+    document.querySelector('#command-form button[type="submit"]').textContent = 'Création...';
+
+    try {
+        const formData = new FormData();
+        formData.append('command_json', JSON.stringify(commandData));
+
+        const response = await fetch('/api/commandes', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showMessage('Succès', `Commande créée (ID: ${result.job_id})`);
+            // Reset le formulaire
+            event.target.reset();
+            commandProducts = [];
+            updateCommandProducts();
+            // Recharger la liste
+            loadCommands();
+        } else {
+            showMessage('Erreur', result.error || 'Erreur inconnue');
+        }
+    } catch (error) {
+        showMessage('Erreur', 'Erreur réseau');
+    } finally {
+        document.querySelector('#command-form button[type="submit"]').disabled = false;
+        document.querySelector('#command-form button[type="submit"]').textContent = 'Créer la commande';
+    }
 }
 
 // Recherche de produits
@@ -200,108 +270,101 @@ function removeProduct(index) {
     updateCommandProducts();
 }
 
-// Affichage du modal de commande
-function showCommandModal() {
-    commandProducts = []; // Reset
-    updateCommandProducts();
+// Vue détaillée d'une commande
+async function viewCommandDetails(commandeId) {
+    try {
+        // Comme on a déjà les données dans loadCommands, on peut les récupérer
+        // Mais pour plus de fraîcheur, on va les recharger depuis l'API
+        const response = await fetch('/api/commandes');
+        const commands = await response.json();
+        const command = commands.find(c => c.id === commandeId);
 
-    document.getElementById('nom_client').value = '';
-    document.getElementById('reference_externe').value = '';
-    document.getElementById('product-search').value = '';
+        if (!command) {
+            showMessage('Erreur', 'Commande non trouvée');
+            return;
+        }
 
-    document.getElementById('modal-title').textContent = 'Nouvelle commande';
-    document.getElementById('save-btn').textContent = 'Créer la commande';
+        // Remplir les détails de la commande
+        document.getElementById('details-command-id').textContent = command.id;
+        document.getElementById('command-info-details').innerHTML = `
+            <p><strong>Client:</strong> ${command.nom_client}</p>
+            ${command.reference_externe ? `<p><strong>Référence:</strong> ${command.reference_externe}</p>` : ''}
+            <p><strong>Date de création:</strong> ${new Date(command.date_creation).toLocaleString('fr-FR')}</p>
+            <p><strong>Statut:</strong> <span class="command-status status-${command.statut.toLowerCase()}">${command.statut}</span></p>
+            <p><strong>Nombre de tâches:</strong> ${command.taches.length}</p>
+        `;
 
-    document.getElementById('command-modal').style.display = 'block';
+        // Lister les tâches
+        const tasksHtml = command.taches.map(task => `
+            <div class="task-item">
+                <h5>Tâche #${task.id} - ${task.type_tache}</h5>
+                <div class="task-details">
+                    <p><strong>Quantité:</strong> ${task.quantite_faite}/${task.quantite_totale}</p>
+                    <p><strong>Statut:</strong> <span class="command-status status-${task.statut.toLowerCase()}">${task.statut}</span></p>
+                    <p><strong>Configuration:</strong> ${formatTaskConfig(task.config)}</p>
+                </div>
+            </div>
+        `).join('');
+
+        document.getElementById('command-tasks-list').innerHTML = tasksHtml;
+
+        // Stocker l'ID de la commande sélectionnée pour la suppression
+        document.getElementById('delete-command-btn').setAttribute('data-command-id', commandeId);
+
+        // Afficher le modal
+        document.getElementById('command-details-modal').style.display = 'block';
+
+    } catch (error) {
+        console.error('Erreur chargement détails:', error);
+        showMessage('Erreur', 'Impossible de charger les détails de la commande');
+    }
 }
 
-// Masquage du modal de commande
-function hideCommandModal() {
-    document.getElementById('command-modal').style.display = 'none';
+function formatTaskConfig(config) {
+    if (!config) return 'N/A';
+
+    if (config.product_id) {
+        return `Produit #${config.product_id} (${config.label_type}mm)`;
+    }
+
+    return JSON.stringify(config).substring(0, 100) + '...';
 }
 
-// Sauvegarde de la commande
-async function saveCommand() {
-    const nomClient = document.getElementById('nom_client').value.trim();
-    const referenceExterne = document.getElementById('reference_externe').value.trim();
+// Masquage du modal de détails
+function hideDetailsModal() {
+    document.getElementById('command-details-modal').style.display = 'none';
+}
 
-    if (!nomClient) {
-        showMessage('Erreur', 'Veuillez saisir le nom du client');
+// Suppression d'une commande
+function deleteSelectedCommand() {
+    const commandeId = document.getElementById('delete-command-btn').getAttribute('data-command-id');
+    if (commandeId) {
+        deleteCommand(commandeId);
+    }
+}
+
+// Suppression d'une commande (fonction appelée depuis les boutons)
+async function deleteCommand(commandeId) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette commande ? Toutes les tâches associées seront aussi supprimées.')) {
         return;
     }
-
-    if (commandProducts.length === 0) {
-        showMessage('Erreur', 'Veuillez ajouter au moins un produit à la commande');
-        return;
-    }
-
-    // Préparer les données
-    const commandData = {
-        nom_client: nomClient,
-        reference_externe: referenceExterne || null,
-        taches: commandProducts.map(product => ({
-            type: "BATCH",
-            quantite: product.quantity,
-            config: {
-                product_id: product.id,
-                label_type: product.format_type,
-                rotate: product.rotation.toString()
-            }
-        }))
-    };
-
-    document.getElementById('save-btn').disabled = true;
-    document.getElementById('save-btn').textContent = 'Création...';
 
     try {
-        const response = await fetch('/api/jobs', {
-            method: 'POST',
-            body: new FormData() // Vide car on utilise des produits existants
+        const response = await fetch(`/api/commandes/${commandeId}`, {
+            method: 'DELETE'
         });
 
-        // On doit simuler l'appel existant qui utilise FormData
-        const formData = new FormData();
-        formData.append('command_json', JSON.stringify(commandData));
+        const result = await response.json();
 
-        const response2 = await fetch('/api/jobs', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response2.json();
-
-        if (response2.ok) {
-            showMessage('Succès', `Commande créée (ID: ${result.job_id})`);
-            hideCommandModal();
-            loadCommands();
+        if (response.ok) {
+            showMessage('Succès', 'Commande supprimée');
+            loadCommands(); // Recharger la liste
+            hideDetailsModal(); // Fermer le modal si ouvert
         } else {
-            showMessage('Erreur', result.error || 'Erreur inconnue');
+            showMessage('Erreur', result.error || 'Erreur lors de la suppression');
         }
     } catch (error) {
         showMessage('Erreur', 'Erreur réseau');
-    } finally {
-        document.getElementById('save-btn').disabled = false;
-        document.getElementById('save-btn').textContent = 'Créer la commande';
-    }
-}
-
-// Affichage des détails d'une commande
-function viewCommandDetails(commandId) {
-    // TODO: Implémenter la vue détaillée
-    showMessage('Info', 'Vue détaillée non implémentée');
-}
-
-// Annulation d'une commande
-async function cancelCommand(commandId) {
-    if (!confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) {
-        return;
-    }
-
-    try {
-        // TODO: Implémenter l'annulation
-        showMessage('Info', 'Annulation non implémentée');
-    } catch (error) {
-        showMessage('Erreur', 'Erreur lors de l\'annulation');
     }
 }
 

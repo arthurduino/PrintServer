@@ -131,13 +131,63 @@ async def get_jobs():
         })
     return jobs
 
+@app.get("/api/commandes")
+async def get_commandes_list():
+    """Renvoie la liste des vraies commandes (pas les tâches simples)."""
+    commands = get_commandes(type_commande='REGULAR')
+    jobs = []
+    for cmd in commands:
+        cmd_id = cmd[0]
+        tasks_raw = get_taches_by_commande(cmd_id)
+        tasks = []
+        for t in tasks_raw:
+            tasks.append({
+                "id": t[0],
+                "ordre": t[2],
+                "priorite": t[3] if len(t) > 3 else 1,  # priorité si disponible
+                "type_tache": t[4] if len(t) > 4 else t[3],
+                "config": parse_config_json(t[5] if len(t) > 5 else t[4]),
+                "quantite_totale": t[6] if len(t) > 6 else t[5],
+                "quantite_faite": t[7] if len(t) > 7 else t[6],
+                "statut": t[8] if len(t) > 8 else t[7]
+            })
+        jobs.append({
+            "id": cmd_id,
+            "nom_client": cmd[1],
+            "reference_externe": cmd[2],
+            "date_creation": cmd[3],
+            "statut": cmd[4],
+            "taches": tasks
+        })
+    return jobs
+
+@app.post("/api/commandes")
+async def create_commande_from_form(
+    command_json: str = Form(..., description="JSON de la commande"),
+    files: List[UploadFile] = File(None, description="Fichiers images à uploader")
+):
+    """Crée une nouvelle commande depuis le formulaire (toujours REGULAR)."""
+    return await _create_job_with_type(command_json, files, 'REGULAR')
+
 @app.post("/api/jobs")
 async def create_job(
     command_json: str = Form(..., description="JSON de la commande sous forme de string"),
     files: List[UploadFile] = File(None, description="Fichiers images à uploader")
 ):
-    """Crée une nouvelle commande avec ses tâches, gère l'upload des images."""
-    print("🚀 [ENTRYPOINT] create_job appelée")
+    """Crée une nouvelle commande avec ses tâches - détecte automatiquement le type."""
+    data = json.loads(command_json)
+
+    # Si c'est une tâche simple (généralement de la page "nouvelle tâche"), ou si une seule tâche avec nom_client générique
+    if len(data.get("taches", [])) == 1 and (data.get("nom_client", "").startswith("Tâche simple") or not data.get("reference_externe")):
+        type_commande = 'SIMPLE_TASK'
+    else:
+        type_commande = 'REGULAR'
+
+    return await _create_job_with_type(command_json, files, type_commande)
+
+async def _create_job_with_type(command_json: str, files: List[UploadFile], type_commande: str):
+    """Fonction commune pour créer une commande avec un type spécifique."""
+    print(f"🚀 [ENTRYPOINT] create_job appelée (type: {type_commande})")
     print(f"📨 [DEBUG] command_json: {command_json[:200]}...")  # Debug limité
 
     # Debugger les paramètres reçus
@@ -219,10 +269,11 @@ async def create_job(
         elif task["type"] == "SERIES" and "images" in config:
             config["images"] = [saved_files.get(img, img) for img in config["images"]]
 
-    # Créer la commande en BDD
+    # Créer la commande en BDD avec le type spécifié
     cmd_id = create_commande(
         command_data["nom_client"],
-        command_data.get("reference_externe")
+        command_data.get("reference_externe"),
+        type_commande
     )
 
     # Créer les tâches pour cette commande
@@ -237,7 +288,7 @@ async def create_job(
             task_data["quantite"]
         )
 
-    return {"job_id": cmd_id, "message": "Commande créée avec succès"}
+    return {"job_id": cmd_id, "message": "Commande créée avec succès", "type": type_commande}
 
 @app.post("/api/control/pause")
 async def pause_worker():
@@ -358,6 +409,23 @@ async def delete_product_api(product_id: int):
     try:
         delete_product(product_id)
         return {"message": "Produit supprimé"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/api/commandes/{commande_id}")
+async def delete_commande_api(commande_id: int):
+    """Supprime une commande (seulement si elle n'est pas en cours d'impression)."""
+    try:
+        # Vérifier si la commande peut être supprimée (pas en cours d'impression)
+        commande_data = get_commande(commande_id)
+        if not commande_data:
+            return {"error": "Commande non trouvée"}
+
+        if commande_data[4] in ['PROCESSING']:  # statut_global
+            return {"error": "Impossible de supprimer une commande en cours d'impression"}
+
+        delete_commande(commande_id)
+        return {"message": "Commande supprimée"}
     except Exception as e:
         return {"error": str(e)}
 

@@ -17,7 +17,8 @@ def init_db():
             nom_client TEXT NOT NULL,
             reference_externe TEXT,
             date_creation TEXT DEFAULT CURRENT_TIMESTAMP,
-            statut_global TEXT NOT NULL CHECK(statut_global IN ('PENDING', 'PROCESSING', 'DONE', 'ERROR'))
+            statut_global TEXT NOT NULL CHECK(statut_global IN ('PENDING', 'PROCESSING', 'DONE', 'ERROR')),
+            type_commande TEXT DEFAULT 'REGULAR' CHECK(type_commande IN ('SIMPLE_TASK', 'REGULAR'))
         )
     ''')
 
@@ -261,12 +262,65 @@ def parse_config_json(config_json: str) -> dict:
     """Parse la config JSON."""
     return json.loads(config_json) if config_json else {}
 
+def create_commande(nom_client: str, reference_externe: Optional[str] = None, type_commande: str = 'REGULAR') -> int:
+    """Crée une nouvelle commande et retourne l'id."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    date_creation = datetime.utcnow().isoformat()
+    statut_global = 'PENDING'
+    cursor.execute('''
+        INSERT INTO commandes (nom_client, reference_externe, date_creation, statut_global, type_commande)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (nom_client, reference_externe, date_creation, statut_global, type_commande))
+    commande_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return commande_id
+
+def get_commandes(type_commande: str = None) -> List[Tuple]:
+    """Retourne toutes les commandes ou filtrées par type."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    if type_commande:
+        cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global, type_commande FROM commandes WHERE type_commande = ? ORDER BY id DESC', (type_commande,))
+    else:
+        cursor.execute('SELECT id, nom_client, reference_externe, date_creation, statut_global, type_commande FROM commandes ORDER BY id DESC')
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
 def _migrate_database():
     """Migration pour ajouter les colonnes manquantes aux tables existantes."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     try:
+        # Vérifier les colonnes manquantes dans la table commandes
+        cursor.execute("PRAGMA table_info(commandes)")
+        columns = [column[1] for column in cursor.fetchall()]
+
+        if 'type_commande' not in columns:
+            print("Migration: Ajout de la colonne 'type_commande' à la table 'commandes'")
+            cursor.execute('ALTER TABLE commandes ADD COLUMN type_commande TEXT DEFAULT \'REGULAR\'')
+            # Mettre à jour les commandes existantes qui ont plusieurs tâches comme "REGULAR"
+            cursor.execute('''
+                UPDATE commandes SET type_commande = 'REGULAR'
+                WHERE id IN (
+                    SELECT commande_id FROM taches
+                    GROUP BY commande_id HAVING COUNT(*) > 1
+                )
+            ''')
+            # Mettre les autres comme "SIMPLE_TASK"
+            cursor.execute('''
+                UPDATE commandes SET type_commande = 'SIMPLE_TASK'
+                WHERE type_commande IS NULL OR type_commande = 'REGULAR' AND id NOT IN (
+                    SELECT commande_id FROM taches
+                    GROUP BY commande_id HAVING COUNT(*) > 1
+                )
+            ''')
+
         # Vérifier si la colonne priorite existe dans la table taches
         cursor.execute("PRAGMA table_info(taches)")
         columns = [column[1] for column in cursor.fetchall()]

@@ -909,6 +909,32 @@ progress::-moz-progress-bar {
     width: 100%;
 }
 
+/* Styles pour la modal de détails des commandes */
+.task-item {
+    background: #f9fafb;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #e5e7eb;
+}
+
+.task-item h5 {
+    margin: 0 0 8px 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.task-details {
+    margin-left: 12px;
+}
+
+.task-details p {
+    margin: 4px 0;
+    font-size: 0.9rem;
+    color: #6b7280;
+}
+
 /* Responsive commandes styles */
 @media (max-width: 768px) {
     .modal-content {

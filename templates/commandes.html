@@ -22,68 +22,88 @@
     </nav>
 
     <div class="container">
+        <!-- Création de commande -->
+        <div class="section create-section">
+            <h2>Créer une nouvelle commande</h2>
+
+            <form id="command-form">
+                <!-- Informations générales -->
+                <div class="form-section">
+                    <h4>Informations générales</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="nom_client">Nom du client:</label>
+                            <input type="text" id="nom_client" name="nom_client" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reference_externe">Référence externe:</label>
+                            <input type="text" id="reference_externe" name="reference_externe">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recherche et ajout de produits -->
+                <div class="form-section">
+                    <h4>Produits de la commande</h4>
+
+                    <!-- Barre de recherche produit -->
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label for="product-search">Rechercher un produit:</label>
+                            <div class="search-container">
+                                <input type="text" id="product-search" placeholder="Tapez pour rechercher...">
+                                <div id="product-search-results" class="search-results" style="display: none;">
+                                    <!-- Résultats de recherche -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Liste des produits ajoutés à la commande -->
+                    <div id="command-products" class="command-products">
+                        <p class="no-products">Aucun produit ajouté à la commande</p>
+                    </div>
+
+                    <div class="form-row">
+                        <button type="submit" class="btn btn-primary full-width">
+                            Créer la commande
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
         <!-- Liste des commandes -->
         <div class="section commands-section">
-            <h2>Gestion des commandes</h2>
-            <div class="section-header">
-                <button id="new-command-btn" class="btn btn-primary">Nouvelle commande</button>
-            </div>
+            <h2>Commandes existantes</h2>
             <div id="commands-list" class="commands-list">
                 <p>Chargement des commandes...</p>
             </div>
         </div>
 
-        <!-- Modal création/modification commande -->
-        <div id="command-modal" class="modal" style="display: none;">
+        <!-- Modal détails commande -->
+        <div id="command-details-modal" class="modal" style="display: none;">
             <div class="modal-content large-modal">
                 <div class="modal-header">
-                    <h3 id="modal-title">Nouvelle commande</h3>
+                    <h3>Détails de la commande #<span id="details-command-id"></span></h3>
                     <span class="modal-close">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <form id="command-form">
-                        <!-- Informations générales -->
-                        <div class="form-section">
+                    <div id="command-details-content">
+                        <div class="command-info-section">
                             <h4>Informations générales</h4>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="nom_client">Nom du client:</label>
-                                    <input type="text" id="nom_client" name="nom_client" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="reference_externe">Référence externe:</label>
-                                    <input type="text" id="reference_externe" name="reference_externe">
-                                </div>
-                            </div>
+                            <div id="command-info-details"></div>
                         </div>
 
-                        <!-- Recherche et ajout de produits -->
-                        <div class="form-section">
-                            <h4>Produits de la commande</h4>
-
-                            <!-- Barre de recherche produit -->
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label for="product-search">Rechercher un produit:</label>
-                                    <div class="search-container">
-                                        <input type="text" id="product-search" placeholder="Tapez pour rechercher...">
-                                        <div id="product-search-results" class="search-results" style="display: none;">
-                                            <!-- Résultats de recherche -->
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Liste des produits ajoutés à la commande -->
-                            <div id="command-products" class="command-products">
-                                <p class="no-products">Aucun produit ajouté à la commande</p>
-                            </div>
+                        <div class="command-tasks-section">
+                            <h4>Tâches de la commande</h4>
+                            <div id="command-tasks-list"></div>
                         </div>
-                    </form>
+                    </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" id="cancel-btn" class="btn btn-secondary">Annuler</button>
-                    <button type="button" id="save-btn" class="btn btn-primary">Créer la commande</button>
+                    <button type="button" id="close-details-btn" class="btn btn-secondary">Fermer</button>
+                    <button type="button" id="delete-command-btn" class="btn btn-danger">Supprimer la commande</button>
                 </div>
             </div>
         </div>
