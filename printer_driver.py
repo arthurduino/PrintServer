@@ -108,50 +108,56 @@ class USBListener(threading.Thread):
         print(f"🛑 [LISTENER] Arrêté - {self.messages_processed} messages spontanés captés")
 
     def _try_read_spontaneous_message(self):
-        """Essaie de lire un message spontané de l'imprimante avec timeout court."""
+        """Essaie de lire un message spontané de l'imprimante selon protocole Brother."""
         dev = None
         try:
             dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
             if dev is None:
                 return None
 
-            # Détacher kernel driver temporairement
+            # Détacher temporairement
             try:
                 if dev.is_kernel_driver_active(0):
                     dev.detach_kernel_driver(0)
             except (AttributeError, NotImplementedError):
                 pass
 
-            # Configuration temporaire
+            # Configuration
             dev.set_configuration()
             cfg = dev.get_active_configuration()
             intf = cfg[(0,0)]
 
-            # Obtenir endpoint d'entrée seulement
             ep_in = usb.util.find_descriptor(
                 intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
             )
 
             if ep_in:
-                # Essayer de lire avec timeout TRES court (pas de commande envoyée)
+                # Timeout augmenté pour capter événements spontanés (Brother peut être lent)
                 try:
-                    response = ep_in.read(32, timeout=50)  # 50ms timeout
+                    # Timeout de 200ms au lieu de 50ms pour laisser temps aux vrais événements
+                    response = ep_in.read(32, timeout=200)
                     if len(response) == 32:
-                        return response  # Retourner le message spontané
+                        # Vérifier que c'est un vrai paquet Brother (en-tête valide)
+                        if response[0] == 0x80 and response[1] == 0x20 and response[2] == 0x42:
+                            return response  # Vrai message spontané Brother
+                        else:
+                            print(f"⚠️ [LISTENER] Paquet invalide - en-tête: {response[0]:02X} {response[1]:02X} {response[2]:02X}")
+                            return None
                 except usb.core.USBError as e:
                     if "timeout" in str(e).lower():
-                        return None  # Timeout normal, pas de message spontané
+                        return None  # Timeout normal - pas de message spontané
                     else:
-                        raise  # Autre erreur USB
+                        raise  # Autre erreur
 
-        except Exception:
-            # En cas d'erreur, retourner None (pas de message)
+        except Exception as e:
+            # Silencieux - erreurs normales avec USB
+            # print(f"⚠️ [LISTENER] Erreur lecture spontanée: {e}")
             pass
         finally:
             if dev:
                 usb.util.dispose_resources(dev)
 
-        return None  # Aucun message spontané disponible
+        return None
 
     def _check_printer_status(self):
         """Vérifie le statut de l'imprimante avec connexion temporaire (Brother standard)."""
