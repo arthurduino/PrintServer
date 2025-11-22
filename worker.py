@@ -2,6 +2,7 @@ import sqlite3
 import json
 import time
 import threading
+import os
 from typing import Optional
 from printer_driver import PrinterDriver
 from database import DB_FILE, parse_config_json
