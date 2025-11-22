@@ -287,16 +287,25 @@ async def _create_job_with_type(command_json: str, files: List[UploadFile], type
 
     # Créer les tâches pour cette commande
     ordre = 0
+    tasks_created = []
     for task_data in command_data.get("taches", []):
         ordre += 1
-        create_tache(
+        print(f"🛠️ [TASK_CREATION] Création tâche {ordre}/{len(command_data.get('taches', []))}:")
+        print(f"🛠️ [TASK_CREATION]   Type: {task_data['type']}")
+        print(f"🛠️ [TASK_CREATION]   Quantité: {task_data['quantite']}")
+        print(f"🛠️ [TASK_CREATION]   Config: {task_data['config']}")
+
+        task_id = create_tache(
             cmd_id,
             ordre,
             task_data["type"],
             task_data["config"],
             task_data["quantite"]
         )
+        tasks_created.append(task_id)
+        print(f"🛠️ [TASK_CREATION]   ID créé: {task_id}")
 
+    print(f"✅ [BATCH] Commande {cmd_id} créée avec {len(tasks_created)} tâches: {tasks_created}")
     return {"job_id": cmd_id, "message": "Commande créée avec succès", "type": type_commande}
 
 @app.post("/api/control/pause")

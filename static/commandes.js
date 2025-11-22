@@ -115,11 +115,11 @@ async function handleCommandSubmit(event) {
         return;
     }
 
-    // Préparer les données
+    // Préparer les données - UNE TÂCHE PAR PRODUIT SÉLECTIONNÉ
     const commandData = {
         nom_client: nomClient,
         reference_externe: referenceExterne || null,
-        taches: commandProducts.map(product => ({
+        taches: commandProducts.map((product, index) => ({
             type: "BATCH",
             quantite: product.quantity,
             config: {
@@ -129,6 +129,10 @@ async function handleCommandSubmit(event) {
             }
         }))
     };
+
+    console.log('🚀 [COMMAND] Création commande avec:', commandProducts.length, 'produits');
+    console.log('🚀 [COMMAND] Données à envoyer:', commandData);
+    console.log('🚀 [COMMAND] Détail tâches:', commandData.taches.map((t, i) => `Tâche ${i+1}: Produit ${t.config.product_id} - ${t.quantite} exemplaires`));
 
     document.querySelector('#command-form button[type="submit"]').disabled = true;
     document.querySelector('#command-form button[type="submit"]').textContent = 'Création...';
@@ -145,14 +149,10 @@ async function handleCommandSubmit(event) {
         const result = await response.json();
 
         if (response.ok) {
-            showMessage('Succès', `Commande créée (ID: ${result.job_id})`);
-            // Reset le formulaire
-            event.target.reset();
-            commandProducts = [];
-            updateCommandProducts();
-            // Recharger la liste
-            loadCommands();
+            console.log('✅ [COMMAND] Création réussie - ID:', result.job_id);
+            console.log('✅ [COMMAND] Type créé:', result.type);
         } else {
+            console.log('❌ [COMMAND] Erreur création:', result);
             showMessage('Erreur', result.error || 'Erreur inconnue');
         }
     } catch (error) {
