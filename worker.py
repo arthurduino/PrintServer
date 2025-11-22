@@ -142,8 +142,8 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
         'cut': config.get('cut', True),
         'copies': 1,  # On gère les copies dans la boucle
         'model': MODEL,
-        'label': config.get('label_type', '62'),
-        'rotate': config.get('rotate', '0'),
+        'label': str(config.get('label_type', '62')),
+        'rotate': str(config.get('rotate', '0')),
         'print_script': None,
         # Options spéciales pour gros fichiers sombres
         'compress': True,  # Activer la compression
