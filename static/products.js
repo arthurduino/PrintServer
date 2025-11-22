@@ -80,7 +80,7 @@ async function loadProducts() {
             productCard.className = 'product-card';
             productCard.innerHTML = `
                 <div class="product-image">
-                    <img src="/uploads/${product.image_path}" alt="${product.nom}" onerror="this.src='/static/placeholder.png'">
+                    <img src="/uploads/${product.image_path}" alt="${product.nom}">
                 </div>
                 <div class="product-info">
                     <h3>${product.nom}</h3>
@@ -88,8 +88,8 @@ async function loadProducts() {
                     ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                 </div>
                 <div class="product-actions">
-                    <button onclick="useProduct(${product.id})" class="btn btn-secondary">Utiliser</button>
-                    <button onclick="deleteProduct(${product.id})" class="btn btn-danger">Supprimer</button>
+                    <button onclick="useProduct(${product.id})" class="btn btn-secondary btn-card">Utiliser</button>
+                    <button onclick="deleteProduct(${product.id})" class="btn btn-danger btn-card">Supprimer</button>
                 </div>
             `;
             productsList.appendChild(productCard);
