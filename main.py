@@ -221,16 +221,17 @@ async def _create_job_with_type(command_json: str, files: List[UploadFile], type
 
     # Sauvegarder les fichiers uploadés et mapper les noms
     saved_files = {}
-    for file in files:
-        if file.filename:
-            file_path = f"uploads/{file.filename}"
-            try:
-                with open(file_path, "wb") as f:
-                    content = await file.read()
-                    f.write(content)
-                saved_files[file.filename] = os.path.abspath(file_path)  # Chemin absolu
-            except Exception as e:
-                return {"error": f"Erreur sauvegarde fichier {file.filename}: {str(e)}"}
+    if files:  # Vérifier que files n'est pas None (cas des produits existants)
+        for file in files:
+            if file.filename:
+                file_path = f"uploads/{file.filename}"
+                try:
+                    with open(file_path, "wb") as f:
+                        content = await file.read()
+                        f.write(content)
+                    saved_files[file.filename] = os.path.abspath(file_path)  # Chemin absolu
+                except Exception as e:
+                    return {"error": f"Erreur sauvegarde fichier {file.filename}: {str(e)}"}
 
     # Pour les produits existants, ajouter leur chemin aux saved_files
     # Vérifier si on a des produits existants (product_id présent dans config)
