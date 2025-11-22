@@ -58,112 +58,135 @@ listener_thread = None
 writer_thread = None
 
 class USBListener(threading.Thread):
-    """Thread d'écoute passive USB pour les messages spontanés de l'imprimante."""
+    """Thread d'écoute passive USB pour les messages spontanés de l'imprimante.
+
+    IMPORTANT: Utilise une connexion temporaire pour éviter les conflits avec le Writer.
+    L'écoute passive ne peut pas monopoliser l'imprimante comme une connexion persistante.
+    """
 
     def __init__(self, vendor_id=VENDOR_ID, product_id=PRODUCT_ID):
         super().__init__(daemon=True, name="USB-Listener")
         self.vendor_id = vendor_id
         self.product_id = product_id
-        self.dev = None
-        self.ep_in = None
         self.running = True
-        self.initialized = False
+        self.last_listen_time = 0
 
     def run(self):
-        """Boucle principale d'écoute."""
-        print("👂 [LISTENER] Démarrage du thread d'écoute USB")
+        """Boucle principale d'écoute avec connexions temporaires."""
+        print("👂 [LISTENER] Démarrage du thread d'écoute USB (connexions temporaires)")
+
+        # UNE SEULE REQUÊTE INITIALE autorisée au démarrage
+        self._send_initial_status_request()
 
         while self.running:
             try:
-                if not self.initialized:
-                    self._initialize_connection()
-                    if not self.initialized:
-                        time.sleep(1)  # Réessaie dans 1 seconde
-                        continue
+                # Écoute passive avec connexion temporaire pour éviter blocage
+                current_time = time.time()
+                if current_time - self.last_listen_time >= 0.1:  # Max 10 connexions/seconde
+                    self._listen_once()
+                    self.last_listen_time = current_time
 
-                # Lecture passive des messages spontanés
-                try:
-                    # Timeout de 1000ms comme spécifié dans les exigences
-                    response = self.ep_in.read(32, timeout=1000)
-
-                    if len(response) == 32:
-                        # Message complet - traiter silencieusement
-                        self._process_status_message(response)
-                    # Note: Les messages incomplets sont ignorés silencieusement (comportement normal)
-
-                except usb.core.USBError as e:
-                    if "timeout" in str(e).lower():
-                        # Timeout normal - l'imprimante est silencieuse pendant le refroidissement
-                        continue
-                    else:
-                        print(f"❌ [LISTENER] Erreur USB critique: {e}")
-                        self.initialized = False
-                        time.sleep(1)
+                # Pause pour éviter surcharge CPU
+                time.sleep(0.05)
 
             except Exception as e:
-                print(f"❌ [LISTENER] Erreur critique: {e}")
-                self.initialized = False
-                time.sleep(2)  # Attendre plus longtemps après une erreur critique
+                print(f"❌ [LISTENER] Erreur critique dans boucle principale: {e}")
+                time.sleep(1)  # Pause avant retry
 
         print("🛑 [LISTENER] Thread d'écoute arrêté")
 
-    def _initialize_connection(self):
-        """Initialise la connexion USB et effectue une seule requête de statut autorisée."""
+    def _send_initial_status_request(self):
+        """Envoie UNE SEULE requête de statut au démarrage (autorisée par spécifications)."""
         try:
-            print("🔌 [LISTENER] Initialisation connexion USB...")
+            print("📡 [LISTENER] Envoi requête initiale de statut (autorisée)")
 
-            # Recherche de l'imprimante
-            self.dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
-            if self.dev is None:
+            dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
+            if dev is None:
+                print("⚠️ [LISTENER] Imprimante non trouvée pour requête initiale")
                 return
 
-            # Détache kernel driver si nécessaire
+            # Préparation connexion temporaire
             try:
-                if self.dev.is_kernel_driver_active(0):
-                    self.dev.detach_kernel_driver(0)
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
             except (AttributeError, NotImplementedError):
                 pass
 
-            # Configuration
-            self.dev.set_configuration()
-            cfg = self.dev.get_active_configuration()
+            dev.set_configuration()
+            cfg = dev.get_active_configuration()
             intf = cfg[(0,0)]
 
-            # Trouve l'endpoint IN
-            self.ep_in = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            ep_out = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+            )
+            ep_in = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
             )
 
-            if not self.ep_in:
-                print("❌ [LISTENER] Endpoint IN non trouvé")
-                return
+            if ep_out and ep_in:
+                # Requête autorisée
+                ep_out.write(b'\x1B\x69\x53', timeout=5000)
+                response = ep_in.read(32, timeout=5000)
 
-            # UNE SEULE REQUÊTE DE STATUT AUTORISÉE AU DÉMARRAGE (ESC i S)
-            try:
-                ep_out = usb.util.find_descriptor(
-                    intf,
-                    custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
-                )
-                if ep_out:
-                    print("📡 [LISTENER] Envoi requête initiale de statut (autorisée)")
-                    ep_out.write(b'\x1B\x69\x53', timeout=5000)
-                    response = self.ep_in.read(32, timeout=5000)
-
-                    if len(response) == 32:
-                        self._process_status_message(response)
-                        print("✅ [LISTENER] Statut initial obtenu - prêt pour écoute passive")
-                        self.initialized = True
-                    else:
-                        print(f"⚠️ [LISTENER] Réponse initiale incomplète: {len(response)} octets")
+                if len(response) == 32:
+                    self._process_status_message(response)
+                    print("✅ [LISTENER] Statut initial obtenu - démarrage écoute passive")
                 else:
-                    print("❌ [LISTENER] Endpoint OUT non trouvé pour requête initiale")
-            except Exception as e:
-                print(f"⚠️ [LISTENER] Impossible d'envoyer requête initiale: {e}")
+                    print(f"⚠️ [LISTENER] Réponse initiale incomplète: {len(response)} octets")
+            else:
+                print("❌ [LISTENER] Endpoints non trouvés pour requête initiale")
 
         except Exception as e:
-            print(f"❌ [LISTENER] Erreur initialisation: {e}")
-            self.initialized = False
+            print(f"⚠️ [LISTENER] Impossible d'envoyer requête initiale: {e}")
+        finally:
+            if 'dev' in locals():
+                usb.util.dispose_resources(dev)
+
+    def _listen_once(self):
+        """Écoute une fois avec une connexion temporaire."""
+        dev = None
+        try:
+            dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
+            if dev is None:
+                return
+
+            # Configuration rapide
+            try:
+                if dev.is_kernel_driver_active(0):
+                    dev.detach_kernel_driver(0)
+            except (AttributeError, NotImplementedError):
+                pass
+
+            dev.set_configuration()
+            cfg = dev.get_active_configuration()
+            intf = cfg[(0,0)]
+
+            ep_in = usb.util.find_descriptor(
+                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            )
+
+            if ep_in:
+                # Lecture rapide avec timeout court
+                try:
+                    response = ep_in.read(32, timeout=100)
+                    if len(response) >= 32:
+                        self._process_status_message(response)
+                except usb.core.USBError as e:
+                    if "timeout" not in str(e).lower():
+                        # Erreur réelle (pas timeout normal)
+                        print(f"❌ [LISTENER] Erreur USB: {e}")
+
+        except usb.core.USBError as e:
+            if e.errno == 16:  # Resource busy - Writer utilise l'imprimante
+                # Comportement normal, pas d'erreur
+                pass
+            else:
+                print(f"❌ [LISTENER] Erreur USB: {e}")
+        except Exception as e:
+            print(f"❌ [LISTENER] Erreur inattendue: {e}")
+        finally:
+            if dev:
+                usb.util.dispose_resources(dev)
 
     def _process_status_message(self, response):
         """Traite un message de statut selon les spécifications Brother."""
