@@ -1,31 +1,69 @@
-// Mise à jour périodique
-async function updateInterface(delay = 1000) {
-    setTimeout(async () => {
-        try {
-            const statusResponse = await fetch('/api/printer/status');
-            const jobsResponse = await fetch('/api/jobs');
-
-            if (statusResponse.ok && jobsResponse.ok) {
-                const statusData = await statusResponse.json();
-                const jobs = await jobsResponse.json();
-
-                updatePrinterStatus(statusData);
-                updateJobList(jobs);
-
-                const isPrinting = statusData.status === 'Busy' || jobs.some(job => job.statut === 'PROCESSING');
-                updateInterface(isPrinting ? 500 : 1000);
-            } else {
-                updateInterface(3000);
-            }
-        } catch (error) {
-            updateInterface(3000);
-        }
-    }, delay);
-}
+// Initialisation immédiate comme les autres pages
+console.log('Homepage script loaded');
 
 document.addEventListener('DOMContentLoaded', () => {
-    updateInterface();
+    console.log('Homepage DOM loaded, initializing interface...');
+    loadInitialData();
 });
+
+async function loadInitialData() {
+    console.log('Loading initial data...');
+    try {
+        // Charger les données statiques immédiatement
+        await updatePrinterStatusFromAPI();
+        await updateJobsFromAPI();
+
+        // Démarrer les mises à jour périodiques
+        startPeriodicUpdates();
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+    }
+}
+
+function startPeriodicUpdates() {
+    console.log('Starting periodic updates');
+    setInterval(async () => {
+        try {
+            await updatePrinterStatusFromAPI();
+            await updateJobsFromAPI();
+        } catch (error) {
+            console.error('Error in periodic update:', error);
+        }
+    }, 2000); // Toutes les 2 secondes au lieu de 1-3
+}
+
+// Fonctions séparées pour les appels API
+async function updatePrinterStatusFromAPI() {
+    try {
+        console.log('Fetching printer status...');
+        const response = await fetch('/api/printer/status');
+        if (response.ok) {
+            const statusData = await response.json();
+            console.log('Printer status:', statusData);
+            updatePrinterStatus(statusData);
+        } else {
+            console.warn('Printer status API failed:', response.status);
+        }
+    } catch (error) {
+        console.error('Error fetching printer status:', error);
+    }
+}
+
+async function updateJobsFromAPI() {
+    try {
+        console.log('Fetching jobs...');
+        const response = await fetch('/api/jobs');
+        if (response.ok) {
+            const jobs = await response.json();
+            console.log('Jobs received:', jobs.length, 'total jobs');
+            updateJobList(jobs);
+        } else {
+            console.warn('Jobs API failed:', response.status);
+        }
+    } catch (error) {
+        console.error('Error fetching jobs:', error);
+    }
+}
 
 // Statut de l'imprimante
 function updatePrinterStatus(statusData) {

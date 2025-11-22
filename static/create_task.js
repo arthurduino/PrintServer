@@ -44,6 +44,21 @@ class CreateTaskApp {
         const searchInput = document.getElementById('product-search');
         searchInput.addEventListener('input', searchProducts);
         searchInput.addEventListener('keydown', handleSearchKeydown);
+
+        // Ajouter les événements de sélection pour les résultats de recherche
+        this.bindSearchEvents();
+    }
+
+    bindSearchEvents() {
+        // Délégation d'événements pour les résultats de recherche
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.selectable-product')) {
+                const productId = e.target.closest('.selectable-product').dataset.productId;
+                if (productId) {
+                    selectProduct(parseInt(productId));
+                }
+            }
+        });
     }
 
     async loadProducts() {
@@ -268,6 +283,14 @@ function searchProducts(event) {
     const resultsContainer = document.getElementById('product-search-results');
 
     console.log('Recherche lancée avec query:', query);
+
+    // Vérifier si les produits sont chargés
+    if (!availableProducts || availableProducts.length === 0) {
+        console.warn('Aucun produit chargé pour la recherche');
+        resultsContainer.innerHTML = '<div class="search-result">Chargement des produits...</div>';
+        resultsContainer.style.display = 'block';
+        return;
+    }
 
     // Recherche améliorée : commence après 1 caractère, plus flexible
     if (query.length < 1) {
