@@ -1176,6 +1176,13 @@ progress::-moz-progress-bar {
     width: 100%;
 }
 
+/* Navigation clavier - mise en évidence pour recherche */
+.search-result.highlighted {
+    background: #f0f9ff !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
 /* Styles pour la modal de détails des commandes */
 .task-item {
     background: #f9fafb;

@@ -1,6 +1,8 @@
 // État global pour les commandes
 let availableProducts = [];
 let commandProducts = [];
+let searchResults = []; // Pour la navigation clavier
+let currentSearchIndex = -1;
 
 // Gestionnaire pour la page Commandes
 document.addEventListener('DOMContentLoaded', function() {
@@ -9,7 +11,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('command-form').addEventListener('submit', handleCommandSubmit);
 
     // Recherche de produits
-    document.getElementById('product-search').addEventListener('input', searchProducts);
+    const searchInput = document.getElementById('product-search');
+    searchInput.addEventListener('input', searchProducts);
+    searchInput.addEventListener('keydown', handleSearchKeydown);
 
     // Modal détails
     document.getElementById('close-details-btn').addEventListener('click', hideDetailsModal);
@@ -196,8 +200,12 @@ function searchProducts(event) {
     if (filteredProducts.length === 0) {
         resultsContainer.innerHTML = '<div class="search-result">Aucun produit trouvé</div>';
     } else {
-        const html = filteredProducts.slice(0, 10).map(p => `
-            <div class="search-result selectable-product">
+        // Stocker les résultats pour la navigation clavier
+        searchResults = filteredProducts.slice(0, 10);
+        currentSearchIndex = -1;
+
+        const html = searchResults.map((p, index) => `
+            <div class="search-result selectable-product" data-search-index="${index}" data-product-id="${p.id}">
                 <div class="search-result-content" onclick="selectProduct(${p.id})">
                     <div class="search-result-image">
                         <img src="/uploads/${p.image_path}" alt="${p.nom}"
@@ -214,7 +222,6 @@ function searchProducts(event) {
                         ➕ Ajouter à la commande
                     </button>
                 </div>
-            </div>
         `).join('');
         resultsContainer.innerHTML = html;
     }
@@ -397,14 +404,76 @@ async function deleteCommand(commandeId) {
     }
 }
 
-// Message overlay (fonction partagée)
+// Navigation clavier pour la recherche de produits
+function handleSearchKeydown(event) {
+    const resultsContainer = document.getElementById('product-search-results');
+    const isVisible = resultsContainer.style.display !== 'none';
+
+    if (!isVisible || searchResults.length === 0) return;
+
+    const key = event.key;
+
+    // Supprimer la mise en évidence précédente
+    const currentHighlighted = resultsContainer.querySelector('.search-result.highlighted');
+    if (currentHighlighted) {
+        currentHighlighted.classList.remove('highlighted');
+    }
+
+    if (key === 'ArrowDown') {
+        event.preventDefault();
+        currentSearchIndex = Math.min(currentSearchIndex + 1, searchResults.length - 1);
+    } else if (key === 'ArrowUp') {
+        event.preventDefault();
+        currentSearchIndex = Math.max(currentSearchIndex - 1, 0);
+    } else if (key === 'Enter') {
+        event.preventDefault();
+        if (currentSearchIndex >= 0 && currentSearchIndex < searchResults.length) {
+            const selectedProduct = searchResults[currentSearchIndex];
+            selectProduct(selectedProduct.id);
+        }
+        return;
+    } else if (key === 'Escape') {
+        event.preventDefault();
+        resultsContainer.style.display = 'none';
+        return;
+    }
+
+    // Mettre en évidence le résultat actuel
+    if (currentSearchIndex >= 0) {
+        const currentElement = resultsContainer.querySelector(`[data-search-index="${currentSearchIndex}"]`);
+        if (currentElement) {
+            currentElement.classList.add('highlighted');
+            currentElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+}
+
+// Message overlay (fonction partagée) avec navigation clavier
 function showMessage(title, message) {
     const overlay = document.getElementById('message-overlay');
     document.getElementById('message-title').textContent = title;
     document.getElementById('message-text').textContent = message;
     overlay.style.display = 'flex';
 
+    // Gestionnaire pour la touche Enter
+    const handleKeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            overlay.style.display = 'none';
+            document.removeEventListener('keydown', handleKeydown);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            overlay.style.display = 'none';
+            document.removeEventListener('keydown', handleKeydown);
+        }
+    };
+
+    // Ajouter le gestionnaire de clavier
+    document.addEventListener('keydown', handleKeydown);
+
+    // Gestionnaire de clic (garder l'original)
     document.getElementById('message-close').addEventListener('click', () => {
         overlay.style.display = 'none';
+        document.removeEventListener('keydown', handleKeydown);
     });
 }
