@@ -209,6 +209,15 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
 
     qty_done = 0
     for _ in range(qty_tot):
+        # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
+        printer_status = printer.get_status()
+        if printer_status.get('is_cooling', False):
+            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
+            _set_task_cooling_until(task_id, cooling_until)
+            print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - pause jusqu'à {time.ctime(cooling_until)}")
+            # Ne pas marquer la tâche en erreur, juste la mettre en pause
+            return
+
         print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
 
         try:
@@ -292,6 +301,15 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
 
     qty_done = 0
     for img_path in images:
+        # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
+        printer_status = printer.get_status()
+        if printer_status.get('is_cooling', False):
+            cooling_until = time.time() + 30  # Attendre 30 secondes de refroidissement
+            _set_task_cooling_until(task_id, cooling_until)
+            print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - pause jusqu'à {time.ctime(cooling_until)}")
+            # Ne pas marquer la tâche en erreur, juste la mettre en pause
+            return
+
         print(f"Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
 
         # Configuration des options par défaut pour chaque image
