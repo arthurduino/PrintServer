@@ -69,12 +69,12 @@ def _worker_loop(printer: PrinterDriver):
         task_data = _get_next_pending_task()
         if not task_data:
             # Reset de l'alerte papier vide si nécessaire (quand du papier est remis)
+            global paper_empty_alert_sent  # Déclarer au début du bloc pertinent
             if paper_empty_alert_sent:
                 if printer_lock.acquire(blocking=False):
                     try:
                         printer_status = printer.get_status()
                         if not printer_status.get('paper_empty', False):
-                            global paper_empty_alert_sent  # Seulement quand on assigne
                             paper_empty_alert_sent = False
                             print("📋 [SMTP] Papier remis - alerte reset pour prochaines notifications")
                     except Exception as e:

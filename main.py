@@ -23,7 +23,8 @@ SMTP_CONFIG = {
     'port': 465,
     'use_ssl': True,
     'username': 'contact@action-locale.fr',
-    'password': '4n49k6dmJC9FUGd7'
+    'password': '4n49k6dmJC9FUGd7',
+    'destinataire': 'arthurdeboisseson@gmail.com'
 }
 
 def send_paper_alert_email(printer_status: dict = None):
@@ -32,7 +33,7 @@ def send_paper_alert_email(printer_status: dict = None):
         # Créer le message
         msg = MIMEMultipart()
         msg['From'] = SMTP_CONFIG['username']
-        msg['To'] = SMTP_CONFIG['username']  # Envoi à soi-même
+        msg['To'] = SMTP_CONFIG['destinataire']  # Envoi à soi-même
         msg['Subject'] = '🚨 ALERTE : Papier épuisé sur l\'imprimante'
 
         # Corps du message
