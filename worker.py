@@ -372,6 +372,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                 print(f"[{time.strftime('%H:%M:%S')}] 📋 Début polling statut étiquette #{i+1}")
 
                 polling_attempts = 0
+                ready_confirmations = 0 # Compteur pour les confirmations d'état "prêt"
                 max_polling_attempts = 60  # Maximum 60 tentatives (30-60 secondes max)
 
                 while polling_attempts < max_polling_attempts:
@@ -404,15 +405,25 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                         # CONDITION DE SORTIE RENFORCÉE
                         # L'imprimante est prête SI :
                         # 1. Sa phase est "prête" (0x00) ET elle ne refroidit pas.
-                        # 2. Un temps minimum s'est écoulé pour garantir que l'impression physique a eu lieu.
+                        # 2. Un temps minimum absolu s'est écoulé.
+                        # 3. On a reçu plusieurs confirmations de cet état "prêt".
                         printer_ready_state = (phase_type == 0x00) and not is_cooling
-                        minimum_time_elapsed = (time.time() - start_time) > 2.0 # Attendre au moins 2 secondes
+                        minimum_time_elapsed = (time.time() - start_time) > 3.0 # Augmenté à 3 secondes pour plus de sécurité
 
-                        printer_ready = printer_ready_state and minimum_time_elapsed
-                        if printer_ready:
+                        if printer_ready_state and minimum_time_elapsed:
+                            ready_confirmations += 1
+                            print(f"✅ Imprimante prête (confirmation {ready_confirmations}/3)...")
+                        else:
+                            # Si l'état change, on réinitialise le compteur
+                            ready_confirmations = 0
+
+                        # On exige 3 confirmations consécutives pour être certain
+                        if ready_confirmations >= 3:
                             elapsed = time.time() - start_time
-                            print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE - Durée: {elapsed:.1f}s")
+                            print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE (confirmé 3 fois) - Durée: {elapsed:.1f}s")
                             break
+                        
+                        time.sleep(0.2) # Petite pause entre les confirmations
 
                     except usb.core.USBError as poll_error:
                         polling_attempts += 1
