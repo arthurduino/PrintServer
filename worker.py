@@ -256,7 +256,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     try:
         # 1. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
         qlr = BrotherQLRaster(MODEL)
-        instructions = convert(qlr, [image_path], '62', cut=True, dither=True, compress=True)
+        instructions = convert(qlr, [image_path], '62', cut=True, dither=True, compress=True, rotate='90')
 
         # 2. CONNEXION PERSISTANTE - Ouverte UNE FOIS au début
         dev = usb.core.find(idVendor=0x04f9, idProduct=0x2042)
