@@ -65,7 +65,7 @@ class CreateTaskApp {
         this.data.products.forEach(product => {
             const option = document.createElement('option');
             option.value = product.id;
-            option.textContent = `${product.nom} (${product.format_type}mm - ${product.rotation}°)`;
+            option.textContent = `${product.nom} (${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°)`;
             option.dataset.product = JSON.stringify(product);
             select.appendChild(option);
         });
@@ -107,9 +107,9 @@ class CreateTaskApp {
 
         // Mettre à jour les données
         document.getElementById('preview-image').src = `/uploads/${product.image_path}`;
-        document.getElementById('preview-image').style.transform = `rotate(${product.rotation}deg)`;
+        document.getElementById('preview-image').style.transform = `rotate(${product.rotation - 90}deg)`;
         document.getElementById('preview-name').textContent = product.nom;
-        document.getElementById('preview-format').textContent = `${product.format_type}mm - ${product.rotation}°`;
+        document.getElementById('preview-format').textContent = `${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°`;
         document.getElementById('preview-description').textContent = product.description || 'Aucune description';
 
         // Ajuster les champs du formulaire
