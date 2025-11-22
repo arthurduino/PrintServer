@@ -10,14 +10,14 @@ let currentImage = null;
 let currentFile = null;
 let originalImageDimensions = null;
 
-// Initialiser la page au chargement
+// Initialiser l'aperçu au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page produits chargée, initialisation');
+    console.log('Page produits chargée, initialisation de l\'aperçu');
     updatePreview();
     loadProducts();
 });
 
-// Gestionnaire pour le changement d'image dans le formulaire produit
+// Gestionnaire pour le changement de fichier image
 document.getElementById('files').addEventListener('change', async (event) => {
     const file = event.target.files[0];
 
@@ -57,7 +57,7 @@ document.getElementById('label_type').addEventListener('change', () => {
 document.getElementById('rotate').addEventListener('change', () => {
     if (currentImage) {
         console.log('Rotation changée, mise à jour des informations produit');
-        // Pour les produits, on met seulement à jour l'affichage des dimensions
+        // Seulement mettre à jour les informations, pas l'aperçu visuel
         const formatSelect = document.getElementById('label_type');
         const rotateSelect = document.getElementById('rotate');
 
@@ -71,7 +71,101 @@ document.getElementById('rotate').addEventListener('change', () => {
     }
 });
 
-// Gestionnaire pour le formulaire de création de produit
+// Fonction principale pour mettre à jour l'aperçu
+function updatePreview() {
+    const previewCanvas = document.getElementById('preview-canvas');
+    const formatSelect = document.getElementById('label_type');
+    const rotateSelect = document.getElementById('rotate');
+
+    // Nettoyer le canvas
+    previewCanvas.innerHTML = '';
+
+    if (!currentImage) {
+        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'aperçu</span></div>';
+        updateDimensionInfo('--', '--', '0');
+        return;
+    }
+
+    // Créer une image temporaire pour obtenir les dimensions naturelles
+    const tempImg = new Image();
+    tempImg.onload = function() {
+        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
+
+        // Stocker les dimensions naturelles
+        originalImageDimensions = {
+            width: tempImg.naturalWidth,
+            height: tempImg.naturalHeight
+        };
+
+        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
+
+        // Calculer les dimensions en millimètres - hauteur toujours = format sélectionné
+        const formatValue = parseInt(formatSelect.value);
+        const heightMm = formatValue; // Hauteur fixe selon le format
+        const widthMm = (tempImg.naturalWidth / tempImg.naturalHeight) * heightMm; // Largeur proportionnelle
+
+        console.log('Dimensions calculées:', widthMm.toFixed(1), 'x', heightMm, 'mm');
+
+        // Créer et ajouter l'image à l'aperçu (rotation seulement dans les paramètres, pas visuellement)
+        const imgElement = document.createElement('img');
+        imgElement.src = currentImage;
+        imgElement.className = 'preview-image';
+        // Pas de rotation visuelle dans l'aperçu produit
+        imgElement.style.transform = 'rotate(0deg)';
+
+        // Calculer la taille d'affichage pour que l'image tienne dans le canvas
+        const canvasWidth = 380;
+        const canvasHeight = 280;
+
+        // Dimensions d'affichage (selon proportions naturelles)
+        const displayWidthPx = widthMm * (300 / 25.4);  // Convertir mm vers pixels
+        const displayHeightPx = heightMm * (300 / 25.4);
+
+        // Calculer l'échelle pour adapter au canvas
+        const scaleX = canvasWidth / displayWidthPx;
+        const scaleY = canvasHeight / displayHeightPx;
+        const scale = Math.min(scaleX, scaleY, 1);
+
+        imgElement.style.width = (displayWidthPx * scale) + 'px';
+        imgElement.style.height = (displayHeightPx * scale) + 'px';
+        imgElement.style.maxWidth = '100%';
+        imgElement.style.maxHeight = '100%';
+
+        previewCanvas.appendChild(imgElement);
+
+        // Mettre à jour les informations de dimension
+        const currentRotation = parseInt(rotateSelect.value) || 0;
+        updateDimensionInfo(widthMm, heightMm, currentRotation);
+    };
+
+    tempImg.src = currentImage;
+}
+
+// Fonction pour mettre à jour les informations de dimensions
+function updateDimensionInfo(widthMm, heightMm, rotation) {
+    if (widthMm === '--' || heightMm === '--') {
+        document.getElementById('current-format').textContent = 'Format: --mm';
+        document.getElementById('rotation-info').textContent = 'Rotation: 0°';
+        document.getElementById('actual-size').textContent = 'Taille réelle: -- x -- mm';
+        return;
+    }
+
+    // Trouver le format actuel sélectionné
+    const formatSelect = document.getElementById('label_type');
+    const labelConfig = LABEL_CONFIGS[formatSelect.value];
+
+    document.getElementById('current-format').textContent = `Format: ${labelConfig.name}`;
+    document.getElementById('rotation-info').textContent = `Rotation: ${rotation}°`;
+
+    // Pour l'affichage, tenir compte de la rotation
+    const isRotated = parseInt(rotation) === 90 || parseInt(rotation) === 270;
+    const displayWidth = isRotated ? parseFloat(heightMm) : parseFloat(widthMm);
+    const displayHeight = isRotated ? parseFloat(widthMm) : parseFloat(heightMm);
+
+    document.getElementById('actual-size').textContent = `Taille réelle: ${displayWidth.toFixed(1)} x ${displayHeight.toFixed(1)} mm`;
+}
+
+// Gestion du formulaire de création de produit
 document.getElementById('product-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     console.log('Soumission du formulaire produit');
@@ -137,98 +231,6 @@ document.getElementById('product-form').addEventListener('submit', async (event)
         submitBtn.textContent = 'Créer le produit';
     }
 });
-
-// Fonction principale pour mettre à jour l'aperçu
-function updatePreview() {
-    const previewCanvas = document.getElementById('preview-canvas');
-    const formatSelect = document.getElementById('label_type');
-    const rotateSelect = document.getElementById('rotate');
-
-    // Nettoyer le canvas
-    previewCanvas.innerHTML = '';
-
-    if (!currentImage) {
-        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'aperçu</span></div>';
-        updateDimensionInfo('--', '--', '0');
-        return;
-    }
-
-    // Créer une image temporaire pour obtenir les dimensions naturelles
-    const tempImg = new Image();
-    tempImg.onload = function() {
-        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
-
-        // Stocker les dimensions naturelles
-        originalImageDimensions = {
-            width: tempImg.naturalWidth,
-            height: tempImg.naturalHeight
-        };
-
-        // Calculer les dimensions en millimètres - hauteur toujours = format sélectionné
-        const formatValue = parseInt(formatSelect.value);
-        const heightMm = formatValue; // Hauteur fixe selon le format
-        const widthMm = (tempImg.naturalWidth / tempImg.naturalHeight) * heightMm; // Largeur proportionnelle
-
-        console.log('Dimensions calculées:', widthMm.toFixed(1), 'x', heightMm, 'mm');
-
-        // Créer et ajouter l'image à l'aperçu (rotation seulement dans les paramètres, pas visuellement)
-        const imgElement = document.createElement('img');
-        imgElement.src = currentImage;
-        imgElement.className = 'preview-image';
-        // Pas de rotation visuelle dans l'aperçu produit
-        imgElement.style.transform = 'rotate(0deg)';
-
-        // Calculer la taille d'affichage
-        const canvasWidth = 380;
-        const canvasHeight = 280;
-
-        // Dimensions d'affichage (selon proportions naturelles)
-        const displayWidthPx = widthMm * (300 / 25.4);  // Convertir mm vers pixels
-        const displayHeightPx = heightMm * (300 / 25.4);
-
-        // Calculer l'échelle
-        const scaleX = canvasWidth / displayWidthPx;
-        const scaleY = canvasHeight / displayHeightPx;
-        const scale = Math.min(scaleX, scaleY, 1);
-
-        imgElement.style.width = (displayWidthPx * scale) + 'px';
-        imgElement.style.height = (displayHeightPx * scale) + 'px';
-        imgElement.style.maxWidth = '100%';
-        imgElement.style.maxHeight = '100%';
-
-        previewCanvas.appendChild(imgElement);
-
-        // Mettre à jour les informations de dimension
-        const currentRotation = parseInt(rotateSelect.value) || 0;
-        updateDimensionInfo(widthMm, heightMm, currentRotation);
-    };
-
-    tempImg.src = currentImage;
-}
-
-// Fonction pour mettre à jour les informations de dimensions
-function updateDimensionInfo(widthMm, heightMm, rotation) {
-    if (widthMm === '--' || heightMm === '--') {
-        document.getElementById('current-format').textContent = 'Format: --mm';
-        document.getElementById('rotation-info').textContent = 'Rotation: 0°';
-        document.getElementById('actual-size').textContent = 'Taille réelle: -- x -- mm';
-        return;
-    }
-
-    // Trouver le format actuel sélectionné
-    const formatSelect = document.getElementById('label_type');
-    const labelConfig = LABEL_CONFIGS[formatSelect.value];
-
-    document.getElementById('current-format').textContent = `Format: ${labelConfig.name}`;
-    document.getElementById('rotation-info').textContent = `Rotation: ${rotation}°`;
-
-    // Pour l'affichage, tenir compte de la rotation
-    const isRotated = parseInt(rotation) === 90 || parseInt(rotation) === 270;
-    const displayWidth = isRotated ? parseFloat(heightMm) : parseFloat(widthMm);
-    const displayHeight = isRotated ? parseFloat(widthMm) : parseFloat(heightMm);
-
-    document.getElementById('actual-size').textContent = `Taille réelle: ${displayWidth.toFixed(1)} x ${displayHeight.toFixed(1)} mm`;
-}
 
 // Fonction pour charger la liste des produits
 async function loadProducts() {
