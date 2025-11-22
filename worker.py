@@ -322,7 +322,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
         # 2. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ (compression désactivée pour compatibilité Brother QL-700)
         qlr = BrotherQLRaster(MODEL)
-        instructions = convert(qlr, [processed_image_path], label_type, cut=True, dither=dither_enabled, compress=False, rotate='90', red=False, dpi_600=(dpi==600))
+        instructions = convert(qlr, [processed_image_path], label_type, cut=True, dither=True, compress=False, rotate='90', red=False, dpi_600=False))
 
         # 3. BOUCLE D'IMPRESSION AVEC POLLING DE SÉCURITÉ
         for i in range(qty_done, qty_tot):
@@ -492,7 +492,7 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
             # 2. Conversion de chaque image
             qlr = BrotherQLRaster(MODEL)
-            instructions = convert(qlr, [processed_image_path], label_type, cut=cut, dither=dither_enabled, compress=False, rotate='90', red=False, dpi_600=(dpi==600))
+            instructions = convert(qlr, [processed_image_path], label_type, cut=cut, dither=True, compress=False, rotate='90', red=False, dpi_600=(dpi==600))
 
             # 3. Créer une fausse config pour la fonction de polling
             # On ne peut pas appeler _process_batch_task directement, on doit ré-implémenter la boucle de polling ici.
