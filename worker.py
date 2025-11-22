@@ -376,36 +376,58 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     # Lire 32 octets de réponse statut
                     res = dev.read(ep_in, 32, timeout=1000)
 
-                    # Analyse des 3 drapeaux critiques selon protocole Brother
-                    is_busy = (res[18] & 0x01) != 0      # True si BUSY (bit 0 du byte 18 à 1)
-                    is_reception_phase = res[19] == 0x00 # True si PHASE RECEPTION (byte 19 = 0x00)
-                    is_cooling = (res[9] & 0x10) != 0    # True si REFROIDISSEMENT (bit 4 du byte 9 à 1)
+                    # ANALYSE CORRECTE DES OCTETS SELON COMMAND REF v6.0
+                    status_type = res[18]       # Page 16 - Status Type
+                    phase_type = res[19]        # Page 16 - Phase Type
+                    notification_num = res[22]  # Page 17 - Notification Number
+                    error_info_1 = res[8]       # Page 14 - Error Info 1
+                    error_info_2 = res[9]       # Page 14 - Error Info 2
 
-                    # CONDITION DE SORTIE FORTEMENT RENFORCÉE :
-                    # A. PAS BUSY: (res[18] & 0x01) == 0
-                    # B. PHASE RECEPTION: res[19] == 0x00
-                    # C. PAS SURCHAUFFE: (res[9] & 0x10) == 0
-                    # D. DURÉE MINIMUM ATTENDUE (> 3 secondes pour éviter les impressions partielles)
-                    # E. AU MOINS 3 TENTATIVES POUR CONFIRMER LA STABILITÉ
-                    printer_basic_ready = (not is_busy) and is_reception_phase and (not is_cooling)
+                    # DÉTECTION DES ÉTATS SELON PROTOCOLE OFFICIEL
+                    is_printing = (phase_type == 0x01)                          # Impression en cours
+                    is_cooling = (status_type == 0x05) and (notification_num == 0x03)  # Refroidissement actif (0x05 + 0x03)
+                    is_fatal_error = (error_info_1 != 0) or (error_info_2 != 0) # Toute erreur détectée
+
+                    # VÉRIFICATION DES ERREURS PRIORITAIRES
+                    if is_fatal_error:
+                        if (error_info_2 & 0x04):
+                            print(f"⚠️ Erreur Transmission (Buffer Overflow) - Octet9:{hex(error_info_2)}")
+                        elif (error_info_2 & 0x10):
+                            print(f"⚠️ Capot Ouvert - Octet9:{hex(error_info_2)}")
+                        else:
+                            print(f"⚠️ Erreur Imprimante Générale - Octet8:{hex(error_info_1)} Octet9:{hex(error_info_2)}")
+                        raise RuntimeError(f"Erreur Imprimante Fatale (Error1:{hex(error_info_1)} Error2:{hex(error_info_2)})")
+
+                    # LOGIQUE DE DÉCISION SELON ALGORITHME OFFICIEL
+                    if is_cooling:
+                        print(f"❄️ Refroidissement actif (Status:{hex(status_type)} Notif:{hex(notification_num)}) - Attente 1.0s...")
+                        time.sleep(1.0)
+                        polling_attempts += 1
+                        continue  # On boucle en attendant fin refroidissement
+
+                    if is_printing:
+                        print(f"🖨️ Impression en cours (Phase:{hex(phase_type)}) - Attente 0.5s...")
+                        time.sleep(0.5)
+                        polling_attempts += 1
+                        continue  # On boucle en attendant fin impression
+
+                    # CONDITION DE SORTIE RENFORCÉE :
+                    # A. Phase == 0x00 (ATTENTE/Prête)
+                    # B. Pas de refroidissement actif
+                    # C. Pas d'erreur fatale
+                    # D. DURÉE MINIMUM > 3s (évite partielles)
+                    # E. AU MOINS 3 CONFIRMATIONS consécutives
+                    printer_basic_ready = (phase_type == 0x00) and (not is_cooling) and (not is_fatal_error)
                     enough_time_passed = (time.time() - start_time) > 3.0  # Durée minimum réaliste
-                    enough_confirmations = polling_attempts >= 2  # Au moins 3 polling (0,1,2)
+                    enough_confirmations = polling_attempts >= 2  # Au moins 3 polling réussis
 
                     printer_ready = printer_basic_ready and enough_time_passed and enough_confirmations
 
                     if printer_ready:
-                        # 🎯 CONDITION DE SORTIE ATTEINTE AVEC TRIPLE VERIFICATION
+                        # 🎯 SORTIE AVEC PROTOCOLE OFFICIEL RESPECTÉ
                         elapsed = time.time() - start_time
-                        print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE AVEC CONFIRMATION - Prête (Idle + Reception + Froide) - Durée: {elapsed:.1f}s - Confirmations: {polling_attempts+1}")
-                        break  # Sortie de boucle polling - voie libre pour suivante
-                    elif is_cooling:
-                        print(f"❄️ Mode Refroidissement actif - Attente 1.0s avant vérification...")
-                        time.sleep(1.0)
-                        polling_attempts += 1
-                    else:
-                        print(f"⏳ Imprimante occupée (Busy:{is_busy}, Phase:{hex(res[19])}) - Attente 0.5s...")
-                        time.sleep(0.5)
-                        polling_attempts += 1
+                        print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE SELON PROTOCOLE - Phase 0x00 (Prête) - Durée: {elapsed:.1f}s - Confirmations: {polling_attempts+1}")
+                        break  # Sortie définitive - voie libre pour suivante
 
                 except usb.core.USBError as poll_error:
                     polling_attempts += 1
@@ -430,7 +452,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
             else:
                 # Si on dépasse le nombre maximum de tentatives
-                raise Exception(f"💥 Polling échoué après {max_polling_attempts} tentatives - Imprimante bloquée en état inconnu (Busy:{is_busy if 'is_busy' in locals() else '?'} Phase:{hex(res[19]) if 'res' in locals() else '?'} Cooling:{is_cooling if 'is_cooling' in locals() else '?'})")
+                raise Exception(f"💥 Polling échoué après {max_polling_attempts} tentatives - Imprimante bloquée en état inconnu (Status:{hex(status_type) if 'status_type' in locals() else '?'} Phase:{hex(phase_type) if 'phase_type' in locals() else '?'} Notif:{hex(notification_num) if 'notification_num' in locals() else '?'} Error1:{hex(error_info_1) if 'error_info_1' in locals() else '?'} Error2:{hex(error_info_2) if 'error_info_2' in locals() else '?'})")
 
             # D. MISE À JOUR BDD APRÈS CHAQUE ÉTIQUETTE
             print(f"[{time.strftime('%H:%M:%S')}] 💾 Mise à jour BDD: {qty_done+1}/{qty_tot} impressions terminées")
