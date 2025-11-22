@@ -16,8 +16,8 @@ async function updateInterface(delay = 15000) {
             updateCurrentJob(jobs);
             updateJobList(jobs);
 
-            // Programmer la prochaine mise à jour selon l'activité
-            const nextDelay = hasActiveJob ? 2000 : 10000; // 2s si actif, 10s si inactif
+            // Programmer la prochaine mise à jour : toujours fréquente pour le statut
+            const nextDelay = 3000; // Toutes les 3 secondes pour réactivité optimale
             updateInterface(nextDelay);
 
         } catch (error) {

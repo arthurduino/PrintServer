@@ -211,15 +211,15 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
     }
 
     const taskData = {
-        nom_client: "Tâche simple",
-        reference_externe: null,
+        nom_client: formData.get('client_name') || "Tâche simple",
+        reference_externe: formData.get('reference') || null,
         taches: [{
             type: "BATCH",
             quantite: parseInt(formData.get('quantity')) || 1,
             config: {
                 image_path: imagePath,
                 cut: true,  // Toujours activée
-                label_type: selectedProductId ? '' : (formData.get('label_type') || '62'),
+                label_type: selectedProductId ? '62' : (formData.get('label_type') || '62'),
                 rotate: selectedProductId ? 0 : parseInt(formData.get('rotate') || '0'),
                 product_id: selectedProductId ? parseInt(selectedProductId) : null
             }

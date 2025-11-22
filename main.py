@@ -131,10 +131,12 @@ async def create_job(
     files: List[UploadFile] = File(..., description="Fichiers images à uploader")
 ):
     """Crée une nouvelle commande avec ses tâches, gère l'upload des images."""
+    print(f"📨 Reçu command_json: {command_json}")  # Debug
     try:
         command_data = json.loads(command_json)
-    except json.JSONDecodeError:
-        return {"error": "JSON invalide pour la commande"}
+    except json.JSONDecodeError as e:
+        print(f"❌ Erreur JSON: {e}")  # Debug
+        return {"error": f"JSON invalide pour la commande: {str(e)}"}
 
     # Créer le dossier uploads s'il n'existe pas
     os.makedirs("uploads", exist_ok=True)
