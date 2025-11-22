@@ -479,43 +479,28 @@ function createTaskHTML(task) {
         filename = pathParts[pathParts.length - 1];
     }
 
-    let html = '<div class="queue-item simple-queue-item';
-    if (isRecovery) {
-        html += ' recovery-task';
-    }
-    html += '" data-job-id="' + jobId + '" data-task-id="' + task.taskId + '">';
+    // Générer le HTML en une seule fois pour éviter les problèmes de concaténation
+    const recoveryClass = isRecovery ? ' recovery-task' : '';
+    const recoveryIcon = isRecovery ? '<span class="recovery">🔄</span>' : '';
+    const imageHtml = task.config && task.config.image_path ?
+        `<img src="/uploads/${filename}" alt="task" class="task-img">` : '📄';
 
-    html += '<div class="task-image">';
-    if (task.config && task.config.image_path) {
-        html += '<img src="/uploads/' + filename + '" alt="task" class="task-img">';
-    } else {
-        html += '📄';
-    }
-    html += '</div>';
-
-    html += '<div class="task-info">';
-    html += '<div class="task-line1">';
-    html += '<strong>Tâche #' + task.taskId + '</strong>';
-    if (isRecovery) {
-        html += '<span class="recovery">🔄</span>';
-    }
-    html += '<span class="qty">' + task.quantity + taskProgressText + '</span>';
-    html += '</div>';
-
-    html += '<div class="task-line2">';
-    html += '<span class="name">' + clientName + '</span>';
-    html += '<span class="date">' + formattedDate + '</span>';
-    html += '</div>';
-    html += '</div>';
-
-    html += '<div class="task-actions">';
-    html += '<span class="badge">' + task.quantity + '</span>';
-    html += '<button class="del" onclick="deleteTask(' + task.taskId + ')">×</button>';
-    html += '</div>';
-
-    html += '</div>';
-
-    return html;
+    return `<div class="queue-item simple-queue-item${recoveryClass}" data-job-id="${jobId}" data-task-id="${task.taskId}">
+        <div class="task-image">${imageHtml}</div>
+        <div class="task-info">
+            <div class="task-line1">
+                <strong>Tâche #${task.taskId}</strong>${recoveryIcon}<span class="qty">${task.quantity}${taskProgressText}</span>
+            </div>
+            <div class="task-line2">
+                <span class="name">${clientName}</span>
+                <span class="date">${formattedDate}</span>
+            </div>
+        </div>
+        <div class="task-actions">
+            <span class="badge">${task.quantity}</span>
+            <button class="del" onclick="deleteTask(${task.taskId})">×</button>
+        </div>
+    </div>`;
 }
 
 // Mise à jour de la file d'attente (fonction originale, maintenant utilisée seulement pour mise à jour complète)
