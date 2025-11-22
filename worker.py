@@ -322,7 +322,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
 
         # 2. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ (compression désactivée pour compatibilité Brother QL-700)
         qlr = BrotherQLRaster(MODEL)
-        instructions = convert(qlr, [processed_image_path], label_type, cut=True, dither=True, compress=False, rotate='90', red=False, dpi_600=False))
+        instructions = convert(qlr, [processed_image_path], label_type, cut=True, dither=True, compress=False, rotate='90', red=False, dpi_600=False)
 
         # 3. BOUCLE D'IMPRESSION AVEC POLLING DE SÉCURITÉ
         for i in range(qty_done, qty_tot):
