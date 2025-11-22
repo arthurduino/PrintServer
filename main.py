@@ -7,7 +7,7 @@ import json
 import os
 import sqlite3
 from database import (
-    init_db, add_missing_columns_if_needed, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
+    init_db, add_missing_columns_if_needed, update_database_constraints, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
 )
 from printer_driver import PrinterDriver
@@ -56,6 +56,7 @@ async def startup_event():
         # Initialiser la base de données
         init_db()
         add_missing_columns_if_needed()
+        update_database_constraints()
         print("Base de données initialisée et mise à jour.")
 
         printer = PrinterDriver()
@@ -564,8 +565,8 @@ async def delete_tache_api(tache_id: int):
                 print(f"🗑️ [TASK_DELETE] La commande {command_id} est en cours d'impression, suppression de tâche refusée")
                 return {"error": "Impossible de supprimer une tâche tant que la commande est en cours d'impression"}
 
-            # Marquer la tâche comme DONE (logiquement supprimée)
-            _execute_with_retry("UPDATE taches SET statut = 'DONE' WHERE id = ?", (tache_id,))
+            # Marquer la tâche comme CANCELLED (supprimée)
+            _execute_with_retry("UPDATE taches SET statut = 'CANCELLED' WHERE id = ?", (tache_id,))
 
             # Vérifier si c'était la dernière tâche en attente de la commande
             _execute_with_retry("""
