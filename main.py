@@ -6,6 +6,9 @@ from typing import List
 import json
 import os
 import sqlite3
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from database import (
     init_db, add_missing_columns_if_needed, update_database_constraints, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
@@ -13,6 +16,72 @@ from database import (
 from printer_driver import PrinterDriver
 from worker import run_worker
 from usb_lock import printer_lock
+
+# Configuration SMTP pour les alertes papier
+SMTP_CONFIG = {
+    'server': 'mail.infomaniak.com',
+    'port': 465,
+    'use_ssl': True,
+    'username': 'contact@action-locale.fr',
+    'password': '4n49k6dmJC9FUGd7'
+}
+
+def send_paper_alert_email(printer_status: dict = None):
+    """Envoie un email d'alerte quand le papier est épuisé."""
+    try:
+        # Créer le message
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_CONFIG['username']
+        msg['To'] = SMTP_CONFIG['username']  # Envoi à soi-même
+        msg['Subject'] = '🚨 ALERTE : Papier épuisé sur l\'imprimante'
+
+        # Corps du message
+        body = """
+        <html>
+        <body>
+        <h2>🚨 Alerte Papier Épuisé</h2>
+        <p>L'imprimante Brother QL-700 a détecté que le papier est épuisé.</p>
+        <p><strong>Actions requises :</strong></p>
+        <ul>
+        <li>Vérifier le rouleau d'étiquettes</li>
+        <li>Recharger le papier si nécessaire</li>
+        <li>Redémarrer l'impression manuellement après remplacement</li>
+        </ul>
+        """ + (f"""
+        <p><strong>Statut détaillé :</strong></p>
+        <ul>
+        <li>Phase : {printer_status.get('phase', 'N/A')}</li>
+        <li>Occupée : {printer_status.get('is_busy', False)}</li>
+        <li>Refroidissement : {printer_status.get('is_cooling', False)}</li>
+        </ul>
+        """ if printer_status else "") + """
+        <p>
+        <em>Cette alerte a été générée automatiquement par le Print Server.</em>
+        </p>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(body, 'html'))
+
+        # Connexion SMTP
+        if SMTP_CONFIG['use_ssl']:
+            server = smtplib.SMTP_SSL(SMTP_CONFIG['server'], SMTP_CONFIG['port'])
+        else:
+            server = smtplib.SMTP(SMTP_CONFIG['server'], SMTP_CONFIG['port'])
+            server.starttls()
+
+        server.login(SMTP_CONFIG['username'], SMTP_CONFIG['password'])
+        text = msg.as_string()
+        server.sendmail(SMTP_CONFIG['username'], SMTP_CONFIG['username'], text)
+        server.quit()
+
+        print("📧 [SMTP] Alerte papier épuisé envoyée avec succès")
+        return True
+
+    except Exception as e:
+        print(f"📧 [SMTP] Erreur envoi email alerte papier : {e}")
+        return False
 
 app = FastAPI(title="Print Server API")
 
