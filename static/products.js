@@ -1,81 +1,111 @@
-// Initialisation de la page produits
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('Page produits chargée');
-    loadProducts();
-});
-
-// Gestion du formulaire de création de produit
-document.getElementById('product-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    console.log('Soumission du formulaire produit');
-
-    const formData = new FormData(event.target);
-    const file = formData.get('files');
-
-    if (!file) {
-        showMessage('Erreur', 'Veuillez sélectionner une image');
-        return;
+// App style Vue.js pour la gestion des produits
+class ProductApp {
+    constructor() {
+        this.data = {
+            products: [],
+            loading: false
+        };
+        this.init();
     }
 
-    // Créer le produit
-    const productData = {
-        nom: formData.get('nom'),
-        description: formData.get('description') || null,
-        format_type: formData.get('label_type'),
-        rotation: parseInt(formData.get('rotate')) || 0
-    };
+    init() {
+        console.log('🚀 Initialisation ProductApp (style Vue.js)');
+        this.loadProducts();
+        this.bindFormEvents();
+    }
 
-    const apiFormData = new FormData();
-    apiFormData.append('product_json', JSON.stringify(productData));
-    apiFormData.append('file', file);
+    // Réactivité simple inspirée de Vue
+    setData(key, value) {
+        this.data[key] = value;
+        this.updateUI();
+    }
 
-    // Désactiver le bouton pendant l'envoi
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Création...';
+    updateUI() {
+        // Mise à jour automatique pour gérer les états de chargement
+    }
 
-    try {
-        const response = await fetch('/api/products', {
-            method: 'POST',
-            body: apiFormData
+    bindFormEvents() {
+        document.getElementById('product-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            console.log('📝 Soumission formulaire produit');
+
+            const formData = new FormData(event.target);
+            const file = formData.get('files');
+
+            if (!file) {
+                this.showMessage('❌ Erreur', 'Veuillez sélectionner une image');
+                return;
+            }
+
+            // Créer le produit
+            const productData = {
+                nom: formData.get('nom'),
+                description: formData.get('description') || null,
+                format_type: formData.get('label_type'),
+                rotation: parseInt(formData.get('rotate')) || 0
+            };
+
+            const apiFormData = new FormData();
+            apiFormData.append('product_json', JSON.stringify(productData));
+            apiFormData.append('file', file);
+
+            const submitBtn = event.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Création...';
+
+            try {
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    body: apiFormData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    this.showMessage('✅ Succès', `Produit "${result.product.nom}" créé avec succès !`);
+                    event.target.reset();
+                    this.loadProducts();
+                } else {
+                    this.showMessage('❌ Erreur', result.error || 'Erreur inconnue');
+                }
+            } catch (error) {
+                this.showMessage('❌ Erreur', 'Erreur réseau');
+                console.error('❌ Erreur réseau:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '📦 Créer le produit';
+            }
         });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            showMessage('Succès', `Produit "${result.product.nom}" créé avec succès !`);
-            event.target.reset();
-            loadProducts();
-            setTimeout(() => {
-                // Pas de redirection pour rester sur la page produits
-            }, 2000);
-        } else {
-            showMessage('Erreur', result.error || 'Erreur inconnue');
-        }
-    } catch (error) {
-        showMessage('Erreur', 'Erreur réseau');
-        console.error('Erreur réseau:', error);
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Créer le produit';
     }
-});
 
-// Fonction pour charger la liste des produits
-async function loadProducts() {
-    try {
-        const response = await fetch('/api/products');
-        const products = await response.json();
+    async loadProducts() {
+        try {
+            this.setData('loading', true);
+            const response = await fetch('/api/products');
+            const products = await response.json();
 
+            this.setData('products', products);
+            this.renderProducts();
+
+            console.log(`📦 ${products.length} produits chargés`);
+        } catch (error) {
+            console.error('❌ Erreur chargement produits:', error);
+            this.showError('Erreur lors du chargement des produits');
+        } finally {
+            this.setData('loading', false);
+        }
+    }
+
+    renderProducts() {
         const productsList = document.getElementById('products-list');
         productsList.innerHTML = '';
 
-        if (products.length === 0) {
+        if (this.data.products.length === 0) {
             productsList.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280;">Aucun produit enregistré pour le moment.</div>';
             return;
         }
 
-        products.forEach(product => {
+        this.data.products.forEach(product => {
             const productCard = document.createElement('div');
             productCard.className = 'product-card';
             productCard.innerHTML = `
@@ -88,59 +118,72 @@ async function loadProducts() {
                     ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                 </div>
                 <div class="product-actions">
-                    <button onclick="useProduct(${product.id})" class="btn btn-secondary btn-card">Utiliser</button>
-                    <button onclick="deleteProduct(${product.id})" class="btn btn-danger btn-card">Supprimer</button>
+                    <button onclick="app.useProduct(${product.id})" class="btn btn-secondary btn-card">🔄 Utiliser</button>
+                    <button onclick="app.deleteProduct(${product.id})" class="btn btn-danger btn-card">🗑️ Supprimer</button>
                 </div>
             `;
             productsList.appendChild(productCard);
         });
-
-    } catch (error) {
-        console.error('Erreur lors du chargement des produits:', error);
-        document.getElementById('products-list').innerHTML = '<div style="text-align: center; padding: 40px; color: #ef4444;">Erreur lors du chargement des produits.</div>';
-    }
-}
-
-// Fonction pour utiliser un produit (redirige vers création de tâche avec le produit sélectionné)
-function useProduct(productId) {
-    window.location.href = `/new-task?product=${productId}`;
-}
-
-// Fonction pour supprimer un produit
-async function deleteProduct(productId) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
-        return;
     }
 
-    try {
-        const response = await fetch(`/api/products/${productId}`, {
-            method: 'DELETE'
-        });
+    useProduct(productId) {
+        window.location.href = `/new-task?product=${productId}`;
+    }
 
-        if (response.ok) {
-            showMessage('Succès', 'Produit supprimé');
-            loadProducts();
-        } else {
-            const result = await response.json();
-            showMessage('Erreur', result.error || 'Erreur lors de la suppression');
+    async deleteProduct(productId) {
+        if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
+            return;
         }
-    } catch (error) {
-        showMessage('Erreur', 'Erreur réseau');
-        console.error('Erreur réseau:', error);
+
+        try {
+            const response = await fetch(`/api/products/${productId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.showMessage('✅ Succès', 'Produit supprimé');
+                this.loadProducts();
+            } else {
+                const result = await response.json();
+                this.showMessage('❌ Erreur', result.error || 'Erreur lors de la suppression');
+            }
+        } catch (error) {
+            this.showMessage('❌ Erreur', 'Erreur réseau');
+            console.error('❌ Erreur réseau:', error);
+        }
+    }
+
+    showMessage(title, message) {
+        const overlay = document.getElementById('message-overlay');
+        document.getElementById('message-title').textContent = title;
+        document.getElementById('message-text').textContent = message;
+        overlay.style.display = 'flex';
+    }
+
+    showError(message) {
+        console.error('❌', message);
+        alert(message);
     }
 }
 
-// Fonction pour afficher les messages
-function showMessage(title, message) {
-    const overlay = document.getElementById('message-overlay');
-    document.getElementById('message-title').textContent = title;
-    document.getElementById('message-text').textContent = message;
-    overlay.style.display = 'flex';
+// Initialisation de l'application
+const app = new ProductApp();
+
+// Fonctions globales pour les boutons (pour la compatibilité)
+function useProduct(productId) {
+    app.useProduct(productId);
 }
 
-// Gestionnaire pour fermer le message
+function deleteProduct(productId) {
+    app.deleteProduct(productId);
+}
+
+function showMessage(title, message) {
+    app.showMessage(title, message);
+}
+
 document.getElementById('message-close').addEventListener('click', () => {
     document.getElementById('message-overlay').style.display = 'none';
 });
 
-console.log('Script products.js chargé');
+console.log('📜 Script products.js chargé (style Vue.js)');
