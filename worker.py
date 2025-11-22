@@ -381,16 +381,22 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     is_reception_phase = res[19] == 0x00 # True si PHASE RECEPTION (byte 19 = 0x00)
                     is_cooling = (res[9] & 0x10) != 0    # True si REFROIDISSEMENT (bit 4 du byte 9 à 1)
 
-                    # CONDITION DE SORTIE = Prête SI ET SEULEMENT SI:
+                    # CONDITION DE SORTIE FORTEMENT RENFORCÉE :
                     # A. PAS BUSY: (res[18] & 0x01) == 0
                     # B. PHASE RECEPTION: res[19] == 0x00
                     # C. PAS SURCHAUFFE: (res[9] & 0x10) == 0
-                    printer_ready = (not is_busy) and is_reception_phase and (not is_cooling)
+                    # D. DURÉE MINIMUM ATTENDUE (> 3 secondes pour éviter les impressions partielles)
+                    # E. AU MOINS 3 TENTATIVES POUR CONFIRMER LA STABILITÉ
+                    printer_basic_ready = (not is_busy) and is_reception_phase and (not is_cooling)
+                    enough_time_passed = (time.time() - start_time) > 3.0  # Durée minimum réaliste
+                    enough_confirmations = polling_attempts >= 2  # Au moins 3 polling (0,1,2)
+
+                    printer_ready = printer_basic_ready and enough_time_passed and enough_confirmations
 
                     if printer_ready:
-                        # 🎯 CONDITION DE SORTIE ATTEINTE
+                        # 🎯 CONDITION DE SORTIE ATTEINTE AVEC TRIPLE VERIFICATION
                         elapsed = time.time() - start_time
-                        print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} Terminée - Imprimante prête (Idle + Reception + Froide) - Durée: {elapsed:.1f}s")
+                        print(f"[{time.strftime('%H:%M:%S')}] ✅ Étiquette #{i+1} TERMINÉE AVEC CONFIRMATION - Prête (Idle + Reception + Froide) - Durée: {elapsed:.1f}s - Confirmations: {polling_attempts+1}")
                         break  # Sortie de boucle polling - voie libre pour suivante
                     elif is_cooling:
                         print(f"❄️ Mode Refroidissement actif - Attente 1.0s avant vérification...")
@@ -404,12 +410,23 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                 except usb.core.USBError as poll_error:
                     polling_attempts += 1
                     error_str = str(poll_error)
+
+                    # Tous les timeouts USB pendant le polling sont traités comme tentatives normales
+                    # (ils indiquent généralement que l'imprimante n'est pas encore prête)
                     if "timeout" in error_str.lower():
-                        print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Timeout USB lors de polling #{polling_attempts}/{max_polling_attempts} - Retry après 1.0s...")
+                        print(f"[{time.strftime('%H:%M:%S')}] ⏳ Timeout USB polling #{polling_attempts}/{max_polling_attempts} - Imprimante pas prête, retry 1.0s...")
                         time.sleep(1.0)
+                        continue
                     else:
-                        print(f"[{time.strftime('%H:%M:%S')}] ❌ Erreur USB critique lors de polling #{polling_attempts}: {error_str}")
-                        raise poll_error  # Erreur critique, sortir immédiatement
+                        # Autres erreurs USB pendant polling = critique,
+                        # sauf si on peut encore retenter
+                        if polling_attempts < max_polling_attempts:
+                            print(f"[{time.strftime('%H:%M:%S')}] ⚠️ Erreur USB polling #{polling_attempts}: {error_str} - Tente de continuer...")
+                            time.sleep(1.0)
+                            continue
+                        else:
+                            print(f"[{time.strftime('%H:%M:%S')}] ❌ Erreur USB critique polling #{polling_attempts}: {error_str} - Arrêt définitif")
+                            raise poll_error
 
             else:
                 # Si on dépasse le nombre maximum de tentatives
