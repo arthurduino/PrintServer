@@ -31,6 +31,15 @@ def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
     # RÉCUPÉRATION APRÈS REDÉMARRAGE : remettre les tâches IN_PROGRESS orphelines en PENDING
     _recover_orphaned_tasks_on_startup()
+
+    # COUPE PRÉVENTIVE AU DÉMARRAGE pour nettoyer les résidus du redémarrage
+    try:
+        print("🗡️ Coupe préventive au démarrage du worker...")
+        printer.cut_label(copies=1)
+        print("✅ Coupe préventive terminée")
+    except Exception as e:
+        print(f"⚠️ Coupe préventive échouée: {e}")
+
     thread = threading.Thread(target=_worker_loop, args=(printer,), daemon=True)
     thread.start()
     print("Worker démarré en thread daemon - récupération d'état activée.")
@@ -315,6 +324,11 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
                 printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
                 blocking=True  # Attendre la fin de l'impression
             )
+
+            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
+            print(f"⏳ Attente de la fin effective de l'impression #{qty_done + 1}...")
+            _wait_for_print_completion(printer, timeout_seconds=30)
+
             print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
@@ -341,6 +355,13 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
                         print(f"💥 Échec même après récupération gentle: {retry_e}")
+                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
+                        try:
+                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
+                            printer.cut_label(copies=1)
+                        except Exception as cut_e:
+                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
+
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
@@ -359,6 +380,13 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
                         print(f"💥 Échec définitif même après attente: {retry_e}")
+                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
+                        try:
+                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
+                            printer.cut_label(copies=1)
+                        except Exception as cut_e:
+                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
+
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
@@ -417,6 +445,11 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                 printer_identifier="usb://04f9:2042",
                 blocking=True
             )
+
+            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
+            print(f"⏳ Attente de la fin effective de l'impression série #{qty_done + 1}...")
+            _wait_for_print_completion(printer, timeout_seconds=30)
+
             print(f"Impression série #{qty_done + 1} terminée avec succès")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
@@ -442,6 +475,13 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
                         print(f"Échec de la série même après récupération: {retry_e}")
+                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
+                        try:
+                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
+                            printer.cut_label(copies=1)
+                        except Exception as cut_e:
+                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
+
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
@@ -459,11 +499,24 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
                         print(f"Échec définitif de la série même après attente classique: {retry_e}")
+                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
+                        try:
+                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
+                            printer.cut_label(copies=1)
+                        except Exception as cut_e:
+                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
+
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
             else:
-                # Autre type d'erreur
+                # Autre type d'erreur - effectuer une coupe préventive
+                print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
+                try:
+                    printer.cut_label(copies=1)
+                except Exception as cut_e:
+                    print(f"⚠️ Coupe préventive échouée: {cut_e}")
+
                 print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
                 _update_task_status(task_id, 'ERROR')
                 _update_command_status(cmd_id, 'ERROR')
@@ -472,6 +525,47 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
         # Délai entre impressions pour éviter surcharge
         if qty_done < qty_tot:
             time.sleep(0.2)
+
+def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30):
+    """Attend que l'imprimante ait terminé l'impression en cours.
+
+    Cette fonction vérifie le statut de l'imprimante jusqu'à ce qu'elle ne soit
+    plus occupée (busy = False) et pas en mode refroidissement.
+
+    Args:
+        printer: Instance du PrinterDriver
+        timeout_seconds: Timeout maximum en secondes (défaut: 30s)
+
+    Returns:
+        bool: True si l'impression s'est terminée avec succès, False si timeout
+    """
+    start_time = time.time()
+    last_status = None
+
+    while time.time() - start_time < timeout_seconds:
+        try:
+            status = printer.get_status()
+
+            # Si l'imprimante n'est ni occupée ni en refroidissement, c'est terminé
+            if not status.get('is_busy', False) and not status.get('is_cooling', False):
+                print(f"✅ Impression terminée - statut: {status['phase']}")
+                return True
+
+            # Afficher le statut actuel toutes les 2 secondes pour éviter spam
+            current_status = f"{status['phase']} (busy: {status['is_busy']}, cooling: {status['is_cooling']})"
+            if current_status != last_status:
+                print(f"⏳ Statut imprimante: {current_status}")
+                last_status = current_status
+
+            # Attendre un peu avant de revérifier
+            time.sleep(0.5)
+
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la vérification du statut: {e}")
+            time.sleep(1)
+
+    print(f"❌ Timeout ({timeout_seconds}s) dépassé en attendant la fin de l'impression")
+    return False
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # printer = PrinterDriver()

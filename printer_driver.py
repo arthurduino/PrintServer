@@ -265,6 +265,25 @@ class PrinterDriver:
                 time.sleep(1)
                 return False
 
+    def cut_label(self, copies: int = 1):
+        """Effectue une coupe manuelle d'étiquettes.
+
+        Args:
+            copies: Nombre d'étiquettes à couper (par défaut: 1)
+        """
+        try:
+            # Commande ESC i A pour coupe automatique
+            # Format: ESC i A <copies>
+            cmd = b'\x1B\x69\x41' + bytes([copies])
+            self.safe_write(cmd, timeout=5000)
+            print(f"✅ Coupe de {copies} étiquette(s) effectuée")
+            # Attendre un peu pour que la coupe se complète
+            time.sleep(2)
+            return True
+        except Exception as e:
+            print(f"⚠️ Échec de la coupe manuelle: {e}")
+            return False
+
     def disconnect(self):
         """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""
         if self.dev:
