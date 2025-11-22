@@ -200,7 +200,8 @@ function searchProducts(event) {
             <div class="search-result selectable-product">
                 <div class="search-result-content" onclick="selectProduct(${p.id})">
                     <div class="search-result-image">
-                        <img src="/uploads/${p.image_path}" alt="${p.nom}">
+                        <img src="/uploads/${p.image_path}" alt="${p.nom}"
+                             onerror="this.onerror=null; this.style.display='none'; this.parentNode.innerHTML='<div class=\\'no-image\\'>📋</div>'">
                     </div>
                     <div class="search-result-info">
                         <div class="search-result-name">${p.nom}</div>
