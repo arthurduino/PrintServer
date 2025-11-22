@@ -305,7 +305,10 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
             time.sleep(0.5)
 
             # C. POLLING DE SÉCURITÉ (CONTRÔLE DE FLUX STRICT)
-            while True:
+            polling_attempts = 0
+            max_polling_attempts = 60  # Maximum 60 tentatives (30-45 secondes max selon le cas)
+
+            while polling_attempts < max_polling_attempts:
                 try:
                     # Envoyer commande statut
                     dev.write(ep_out, CMD_STATUS, timeout=1000)
@@ -331,13 +334,25 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
                     elif is_cooling:
                         print(f"❄️ Mode Refroidissement actif - Attente 1.0s avant vérification...")
                         time.sleep(1.0)
+                        polling_attempts += 1
                     else:
                         print(f"⏳ Imprimante occupée (Busy:{is_busy}, Phase:{hex(res[19])}) - Attente 0.5s...")
                         time.sleep(0.5)
+                        polling_attempts += 1
 
-                except usb.core.USBError:
-                    print("⚠️ Timeout USB lors de polling - Retry après 1.0s...")
-                    time.sleep(1.0)  # Retry sur erreur USB
+                except usb.core.USBError as poll_error:
+                    polling_attempts += 1
+                    error_str = str(poll_error)
+                    if "timeout" in error_str.lower():
+                        print(f"⚠️ Timeout USB lors de polling #{polling_attempts}/{max_polling_attempts} - Retry après 1.0s...")
+                        time.sleep(1.0)
+                    else:
+                        print(f"❌ Erreur USB critique lors de polling #{polling_attempts}: {error_str}")
+                        raise poll_error  # Erreur critique, sortir immédiatement
+
+            else:
+                # Si on dépasse le nombre maximum de tentatives
+                raise Exception(f"💥 Polling échoué après {max_polling_attempts} tentatives - Imprimante bloquée en état inconnu (Busy:{is_busy if 'is_busy' in locals() else '?'} Phase:{hex(res[19]) if 'res' in locals() else '?'} Cooling:{is_cooling if 'is_cooling' in locals() else '?'})")
 
             # D. MISE À JOUR BDD APRÈS CHAQUE ÉTIQUETTE
             qty_done += 1
