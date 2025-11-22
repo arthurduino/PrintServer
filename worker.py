@@ -558,6 +558,7 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
     """
     start_time = time.time()
     last_status = None
+    busy_start_time = None  # 🍯 WATCHDOG : suivi du temps BUSY prolongé
 
     while time.time() - start_time < timeout_seconds:
         try:
@@ -567,6 +568,22 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
             if not status.get('is_busy', False) and not status.get('is_cooling', False):
                 print(f"✅ Impression terminée - statut: {status['phase']}")
                 return True
+
+            # 🍯 WATCHDOG ANTI-BLOCAGE : détecter si l'imprimante reste BUSY anormalement longtemps
+            # Si elle est busy mais qu'aucune tâche n'est réellement en cours d'impression
+            if status.get('is_busy', False):
+                if busy_start_time is None:
+                    busy_start_time = time.time()
+                    print("🔍 Watchdog activé - surveillance de BUSY prolongé...")
+
+                busy_duration = time.time() - busy_start_time
+                if busy_duration > 5.0 and not _has_active_print_task():
+                    print(f"🐶 WATCHDOG: Imprimante BUSY depuis {busy_duration:.1f}s mais aucune tâche active - forçant la sortie!")
+                    # Forcer la sortie de la boucle pour permettre l'impression
+                    break
+            else:
+                # Plus busy - reset du watchdog
+                busy_start_time = None
 
             # Afficher le statut actuel toutes les 2 secondes pour éviter spam
             current_status = f"{status['phase']} (busy: {status['is_busy']}, cooling: {status['is_cooling']})"
@@ -583,6 +600,33 @@ def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30
 
     print(f"❌ Timeout ({timeout_seconds}s) dépassé en attendant la fin de l'impression")
     return False
+
+def _has_active_print_task() -> bool:
+    """Vérifie si une tâche d'impression est actuellement en cours.
+
+    Cette fonction est utilisée par le watchdog pour détecter les faux positifs BUSY.
+
+    Returns:
+        bool: True si une tâche est en cours d'impression (IN_PROGRESS ou PROCESSING), False sinon
+    """
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        # Vérifier s'il y a des tâches ou commandes en cours d'impression
+        cursor.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT 1 FROM taches WHERE statut IN ('IN_PROGRESS', 'PROCESSING')
+                UNION ALL
+                SELECT 1 FROM commandes WHERE statut_global = 'PROCESSING'
+            )
+        """)
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la vérification des tâches actives: {e}")
+        # En cas d'erreur, assumer qu'il y a une tâche active pour éviter le forçage
+        return True
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # printer = PrinterDriver()

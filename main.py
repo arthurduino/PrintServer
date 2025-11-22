@@ -12,6 +12,7 @@ from database import (
 )
 from printer_driver import PrinterDriver
 from worker import run_worker
+from usb_lock import printer_lock
 
 app = FastAPI(title="Print Server API")
 
@@ -324,50 +325,72 @@ async def resume_worker():
 @app.get("/api/printer/status")
 async def get_printer_status():
     """Renvoie l'état détaillé actuel de l'imprimante avec tous les codes de statut."""
+    # CONTRAINTE CRITIQUE : L'API ne doit JAMAIS bloquer
+    # Utilise printer_lock.acquire(blocking=False) pour ne pas attendre le worker
+
     if not printer:
         return {"status": "Disconnected", "detail": "Imprimante non initialisée", "is_error": True}
 
-    try:
-        status = printer.get_status()
+    # Si le verrou est disponible (worker ne travaille pas), on peut accéder à l'USB
+    if printer_lock.acquire(blocking=False):
+        try:
+            # Le worker n'utilise pas l'imprimante, on peut lire le statut réel
+            status = printer.get_status()
 
-        # Retourner TOUTES les informations du driver pour précision maximale
-        result = {
-            "status": "Ready", # Valeur par défaut
-            "detail": "",
-            "phase": status['phase'],
-            "raw_phase": status['raw_phase'],
-            "is_busy": status['is_busy'],
-            "is_cooling": status['is_cooling'],
-            "paper_empty": status['paper_empty'],
-            "cover_open": status['cover_open'],
-            "is_error": status['is_error']
-        }
+            # Retourner TOUTES les informations du driver pour précision maximale
+            result = {
+                "status": "Ready", # Valeur par défaut
+                "detail": "",
+                "phase": status['phase'],
+                "raw_phase": status['raw_phase'],
+                "is_busy": status['is_busy'],
+                "is_cooling": status['is_cooling'],
+                "paper_empty": status['paper_empty'],
+                "cover_open": status['cover_open'],
+                "is_error": status['is_error']
+            }
 
-        # Déterminer le statut principal basé sur les flags les plus prioritaires
-        if status['cover_open']:
-            result["status"] = "Cover Open"
-            result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
-        elif status['paper_empty']:
-            result["status"] = "Paper Empty"
-            result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
-        elif status['phase'] == 'COOLING':
-            result["status"] = "Cooling"
-            result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
-        elif status['is_busy']:
-            result["status"] = "Busy"
-            result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
-        else:
-            result["status"] = "Ready"
-            result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
+            # Déterminer le statut principal basé sur les flags les plus prioritaires
+            if status['cover_open']:
+                result["status"] = "Cover Open"
+                result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
+            elif status['paper_empty']:
+                result["status"] = "Paper Empty"
+                result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
+            elif status['phase'] == 'COOLING':
+                result["status"] = "Cooling"
+                result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
+            elif status['is_busy']:
+                result["status"] = "Busy"
+                result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
+            else:
+                result["status"] = "Ready"
+                result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
 
-        return result
+            return result
 
-    except Exception as e:
+        except Exception as e:
+            return {
+                "status": "Error",
+                "detail": f"Erreur de communication: {str(e)}",
+                "phase": "UNKNOWN",
+                "is_error": True
+            }
+        finally:
+            printer_lock.release()
+    else:
+        # Le verrou est pris par le worker - retourner immédiatement un statut BUSY simulé
+        # Cela évite tout accès concurrent à l'USB qui pourrait causer des erreurs
         return {
-            "status": "Error",
-            "detail": f"Erreur de communication: {str(e)}",
-            "phase": "UNKNOWN",
-            "is_error": True
+            "status": "Busy",
+            "detail": "Worker is printing - Real-time status temporarily unavailable",
+            "phase": "WORKER_BUSY",
+            "raw_phase": 0,
+            "is_busy": True,
+            "is_cooling": False,
+            "paper_empty": False,
+            "cover_open": False,
+            "is_error": False
         }
 
 # API Routes pour les produits (autocollants enregistrés)
