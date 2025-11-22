@@ -143,8 +143,8 @@ def create_tache(commande_id: int, ordre: int, type_tache: str, config: Dict[str
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO taches (commande_id, ordre, type_tache, config_json, quantite_totale) VALUES (?, ?, ?, ?, ?)",
-        (commande_id, ordre, type_tache, json.dumps(config), quantite)
+        "INSERT INTO taches (commande_id, ordre, type_tache, config_json, quantite_totale, statut) VALUES (?, ?, ?, ?, ?, ?)",
+        (commande_id, ordre, type_tache, json.dumps(config), quantite, 'PENDING')
     )
     task_id = cursor.lastrowid
     conn.commit()
