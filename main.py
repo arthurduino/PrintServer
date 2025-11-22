@@ -128,7 +128,7 @@ async def get_jobs():
 @app.post("/api/jobs")
 async def create_job(
     command_json: str = Form(..., description="JSON de la commande sous forme de string"),
-    files: List[UploadFile] = File(..., description="Fichiers images à uploader")
+    files: List[UploadFile] = File(None, description="Fichiers images à uploader")
 ):
     """Crée une nouvelle commande avec ses tâches, gère l'upload des images."""
     print("🚀 [ENTRYPOINT] create_job appelée")
