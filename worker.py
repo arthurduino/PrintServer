@@ -4,7 +4,6 @@ import time
 import threading
 import os
 from typing import Optional
-from printer_driver import PrinterDriver
 from database import DB_FILE, parse_config_json
 
 
@@ -29,89 +28,43 @@ print(f"ModèleBrother QL-700: {MODEL}")
 # État global du worker
 paused = True  # True = actif, False = mis en pause
 
-def run_worker(printer: PrinterDriver):
+def run_worker():
     """Lance le worker en daemon thread."""
     # RÉCUPÉRATION APRÈS REDÉMARRAGE : remettre les tâches IN_PROGRESS orphelines en PENDING
     _recover_orphaned_tasks_on_startup()
 
-    # COUPE PRÉVENTIVE AU DÉMARRAGE pour nettoyer les résidus du redémarrage
-    try:
-        print("🗡️ Coupe préventive au démarrage du worker...")
-        printer.cut_label(copies=1)
-        print("✅ Coupe préventive terminée")
-    except Exception as e:
-        print(f"⚠️ Coupe préventive échouée: {e}")
+    # Note: Brother_QL ne supporte pas la coupe manuelle au démarrage
 
-    thread = threading.Thread(target=_worker_loop, args=(printer,), daemon=True)
+    thread = threading.Thread(target=_worker_loop, daemon=True)
     thread.start()
-    print("Worker démarré en thread daemon - récupération d'état activée.")
+    print("Worker démarré en thread daemon avec Brother_QL - récupération d'état activée.")
 
-def _worker_loop(printer: PrinterDriver):
-    """Boucle principale du worker pour traiter les tâches."""
+def _worker_loop():
+    """Boucle principale du worker pour traiter les tâches avec Brother_QL uniquement."""
     while True:
-        # Vérifier si le worker est en pause - plus fréquemment pour une réponse instantanée
+        # Vérifier si le worker est en pause
         if not paused:
-            time.sleep(0.01)  # Sleep très court quand en pause pour réponse instantanée
+            time.sleep(0.01)  # Sleep très court quand en pause
             continue
 
         task_data = _get_next_pending_task()
         if not task_data:
-            time.sleep(0.01)  # Délai très court pour une meilleure réactivité du statut
+            time.sleep(0.01)  # Délai court pour réactivité
             continue
 
         task_id, cmd_id, type_t, config_json, qty_tot, qty_done = task_data
         config = parse_config_json(config_json)
 
-        # Vérifier si l'imprimante est en phase de refroidissement
-        try:
-            printer_status = printer.get_status()
-        except Exception as e:
-            error_msg = str(e)
-            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"🔒 Imprimante occupée au début de {task_id}, attente courte...")
-                time.sleep(2)  # Attente courte puis réessai
-                continue
-            else:
-                print(f"⚠️ Erreur imprévue du statut pour {task_id}: {e}")
-                time.sleep(1)
-                continue
-
-        if printer_status.get('is_cooling', False):
-            _set_task_cooling_wait(task_id)
-            print(f"🧊 Imprimante en refroidissement - tâche {task_id} mise en attente")
-            time.sleep(0.1)
-            continue
-
-        # Vérifier si cette tâche attend encore la fin du refroidissement
-        if _is_task_waiting_cooling(task_id):
-            # Vérifier si l'imprimante n'est plus en refroidissement
-            printer_status = printer.get_status()
-            if not printer_status.get('is_cooling', False):
-                # Imprimante plus en refroidissement - ajouter un petit buffering de sécurité
-                _set_task_buffering_time(task_id, 3)  # 3 secondes de buffering
-                print(f"🧊 Imprimante sortie de refroidissement - tâche {task_id} en buffering 3s")
-            else:
-                print(f"🧊 Tâche {task_id} en attente - imprimante encore en refroidissement")
-                time.sleep(0.1)
-                continue
-
-            remaining_buffering = _get_task_buffering_seconds(task_id)
-            if remaining_buffering > 0:
-                print(f"🧊 Tâche {task_id} en buffering post-refroidissement ({remaining_buffering:.1f}s)")
-                time.sleep(0.1)
-                continue
-            else:
-                # Tâche prête à reprendre - nettoyer le flag de refroidissement
-                _clear_task_cooling_wait(task_id)
-                print(f"✅ Tâche {task_id} prête à reprendre après refroidissement")
+        # Note: Brother_QL ne supporte pas le monitoring avancé du statut (cooling, paper_empty, etc.)
+        # On utilise une approche simplifiée avec délai fixe entre impressions
 
         _set_processing(task_id, cmd_id)
 
         try:
             if type_t == 'BATCH':
-                _process_batch_task(printer, task_id, cmd_id, config, qty_tot)
+                _process_batch_task(task_id, cmd_id, config, qty_tot)
             elif type_t == 'SERIES':
-                _process_series_task(printer, task_id, cmd_id, config, qty_tot)
+                _process_series_task(task_id, cmd_id, config, qty_tot)
             else:
                 raise ValueError(f"Type de tâche inconnu: {type_t}")
 
@@ -121,17 +74,14 @@ def _worker_loop(printer: PrinterDriver):
 
         except Exception as e:
             print(f"Erreur lors du traitement de la tâche {task_id}: {e}")
-            # Si c'est une erreur temporaire (timeout, USB), on peut essayer de paused ou retry, mais pour simplicité, ERROR
             _update_task_status(task_id, 'ERROR')
             _update_command_status(cmd_id, 'ERROR')
-            # Log détaillé pour debug
+            # Logs pour debug
             if 'Timeout' in str(e) or 'Operation timed out' in str(e):
-                print(f"Tâche {task_id} échouée à cause d'un timeout - vérifier connexion USB ou imprimerie")
-            elif 'Papier vide' in str(e):
-                print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
-            elif 'Erreur USB' in str(e):
-                print(f"Tâche {task_id} échouée : problème USB - vérifier câble et permissions")
-            # Continuer immédiatement au lieu de dormir (auto-recovery gérera la reconnexion)
+                print(f"Tâche {task_id} échouée à cause d'un timeout - vérifier connexion USB")
+            elif 'Resource busy' in str(e) or '[Errno 16]' in str(e):
+                print(f"Tâche {task_id} échouée : ressource USB occupée")
+            # Continuer immédiatement
 
 def _get_next_pending_task() -> Optional[tuple]:
     """Récupère la prochaine tâche PENDING triée par priorité + ID commande + ordre."""
@@ -285,8 +235,8 @@ def _check_command_completion(cmd_id: int):
         conn.commit()
     conn.close()
 
-def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : imprime multiples copies de la même étiquette."""
+def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
+    """Traite une tâche BATCH : imprime multiples copies de la même étiquette avec Brother_QL."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
 
@@ -326,29 +276,18 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
     print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
 
     for _ in range(qty_tot - qty_done):  # On termine seulement les impressions restantes !
-        # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
-        printer_status = printer.get_status()
-        if printer_status.get('is_cooling', False):
-            _set_task_cooling_wait(task_id)
-            print(f"🧊 Imprimante entrée en refroidissement pendant tâche {task_id} - mise en attente dynamique")
-            # Ne pas marquer la tâche en erreur, juste la mettre en pause
-            return
-
         print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
 
         try:
-            # Utiliser seulement la méthode brother_ql.send() - pas de méthode manuelle
+            # Utiliser seulement la méthode brother_ql.send()
             send(
                 instructions=form,  # Données raster déjà préparées
                 printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
                 blocking=True  # Attendre la fin de l'impression
             )
 
-            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
-            print(f"⏳ Attente de la fin effective de l'impression #{qty_done + 1}...")
-            _wait_for_print_completion(printer, timeout_seconds=30)
-
-            print(f"Impression #{qty_done + 1} terminée avec succès via brother_ql")
+            # Délai fixe entre impressions (Brother_QL gère lui-même l'attente)
+            print(f"✅ Impression #{qty_done + 1} terminée avec succès via brother_ql")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
@@ -356,72 +295,37 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
             error_msg = str(e)
             print(f"Échec de l'impression #{qty_done + 1}: {error_msg}")
 
-            # Gestion spéciale pour les erreurs de ressource busy (imprimante occupée/verrouillée)
+            # Gestion simplifiée des erreurs (pas de récupération de connexion)
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"🔒 Linux a volé l'imprimante pour {task_id} ! Récupération en cours...")
-                # Tenter une récupération gentle (pas de reset destructif)
-                if printer.recuperer_connexion():
-                    print("✅ Récupération connexion réussie, nouvelle tentative d'impression...")
-                    # Réessaie immédiatement sans délai
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression #{qty_done + 1} réussie après récupération gentle")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"💥 Échec même après récupération gentle: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
-                else:
-                    print("⚠️ Récupération échouée, nouvel essai avec attente classique...")
-                    # Attente un peu plus courte maintenant que nous avons la bonne logique
-                    time.sleep(3)
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression #{qty_done + 1} réussie au deuxième essai")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"💥 Échec définitif même après attente: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon tâche {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
+                print(f"🔒 Ressource USB occupée pour {task_id} - nouvel essai après délai...")
+                time.sleep(2)  # Attente simple
+                try:
+                    send(
+                        instructions=form,
+                        printer_identifier="usb://04f9:2042",
+                        blocking=True
+                    )
+                    print(f"✅ Impression #{qty_done + 1} réussie au deuxième essai")
+                    qty_done += 1
+                    _update_task_progress(task_id, qty_done)
+                except Exception as retry_e:
+                    print(f"💥 Échec définitif: {retry_e}")
+                    _update_task_status(task_id, 'ERROR')
+                    _update_command_status(cmd_id, 'ERROR')
+                    return
             else:
                 # Autre type d'erreur - marquer comme erreur immédiatement
-                print(f"Tâche {task_id} marquée en erreur - passage à la suivante")
+                print(f"Tâche {task_id} marquée en erreur")
                 _update_task_status(task_id, 'ERROR')
                 _update_command_status(cmd_id, 'ERROR')
                 return
 
-        # Délai entre impressions pour éviter surcharge
+        # Délai entre impressions pour éviter surcharge (court délai avec Brother_QL)
         if qty_done < qty_tot:
-            time.sleep(0.2)
+            time.sleep(0.1)
 
-def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche SERIES : imprime une série d'images différentes."""
+def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
+    """Traite une tâche SERIES : imprime une série d'images différentes avec Brother_QL."""
     if not brother_ql:
         raise ImportError("brother_ql non disponible")
 
@@ -434,14 +338,6 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
 
     qty_done = 0
     for img_path in images:
-        # Vérifier si l'imprimante est entrée en mode refroidissement entre les impressions
-        printer_status = printer.get_status()
-        if printer_status.get('is_cooling', False):
-            _set_task_cooling_wait(task_id)
-            print(f"🧊 Imprimante entrée en refroidissement pendant série {task_id} - mise en attente dynamique")
-            # Ne pas marquer la tâche en erreur, juste la mettre en pause
-            return
-
         print(f"Impression série #{qty_done + 1}/{qty_tot} : {img_path}")
 
         # Configuration des options par défaut pour chaque image
@@ -465,11 +361,7 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
                 blocking=True
             )
 
-            # ATTENDRE LA FIN RÉELLE DE L'IMPRESSION - brother_ql.send() peut retourner trop tôt
-            print(f"⏳ Attente de la fin effective de l'impression série #{qty_done + 1}...")
-            _wait_for_print_completion(printer, timeout_seconds=30)
-
-            print(f"Impression série #{qty_done + 1} terminée avec succès")
+            print(f"✅ Impression série #{qty_done + 1} terminée avec succès")
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
@@ -477,116 +369,35 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
             error_msg = str(e)
             print(f"Échec de l'impression série #{qty_done + 1}: {error_msg}")
 
-            # Gestion spéciale pour les erreurs de ressource busy
+            # Gestion simplifiée des erreurs (pas de récupération de connexion avancée)
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"Imprimante occupée pour série {task_id} - récupération connexion...")
-                if printer.recuperer_connexion():
-                    print("Récupération connexion réussie pour série, nouvelle tentative...")
-                    time.sleep(1)  # Petite pause de sécurité
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression série #{qty_done + 1} réussie après récupération")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"Échec de la série même après récupération: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
-                else:
-                    print("Récupération échouée pour série, nouvel essai avec attente classique...")
-                    time.sleep(10)
-                    try:
-                        send(
-                            instructions=form,
-                            printer_identifier="usb://04f9:2042",
-                            blocking=True
-                        )
-                        print(f"Impression série #{qty_done + 1} réussie au deuxième essai classique")
-                        qty_done += 1
-                        _update_task_progress(task_id, qty_done)
-                    except Exception as retry_e:
-                        print(f"Échec définitif de la série même après attente classique: {retry_e}")
-                        # COUPE PRÉVENTIVE AVANT D'ABANDONNER LA TÂCHE
-                        try:
-                            print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
-                            printer.cut_label(copies=1)
-                        except Exception as cut_e:
-                            print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                        _update_task_status(task_id, 'ERROR')
-                        _update_command_status(cmd_id, 'ERROR')
-                        return
-            else:
-                # Autre type d'erreur - effectuer une coupe préventive
-                print(f"🗡️ Coupe préventive avant abandon série {task_id}...")
+                print(f"🔒 Ressource USB occupée pour série {task_id} - nouvel essai après délai...")
+                time.sleep(2)  # Attente simple
                 try:
-                    printer.cut_label(copies=1)
-                except Exception as cut_e:
-                    print(f"⚠️ Coupe préventive échouée: {cut_e}")
-
-                print(f"Tâche série {task_id} marquée en erreur - passage à la suivante")
+                    send(
+                        instructions=form,
+                        printer_identifier="usb://04f9:2042",
+                        blocking=True
+                    )
+                    print(f"✅ Impression série #{qty_done + 1} réussie au deuxième essai")
+                    qty_done += 1
+                    _update_task_progress(task_id, qty_done)
+                except Exception as retry_e:
+                    print(f"💥 Échec définitif de la série: {retry_e}")
+                    _update_task_status(task_id, 'ERROR')
+                    _update_command_status(cmd_id, 'ERROR')
+                    return
+            else:
+                # Autre type d'erreur - marquer en erreur
+                print(f"Tâche série {task_id} marquée en erreur")
                 _update_task_status(task_id, 'ERROR')
                 _update_command_status(cmd_id, 'ERROR')
                 return
 
-        # Délai entre impressions pour éviter surcharge
+        # Délai entre impressions pour éviter surcharge (court délai avec Brother_QL)
         if qty_done < qty_tot:
-            time.sleep(0.2)
-
-def _wait_for_print_completion(printer: PrinterDriver, timeout_seconds: int = 30):
-    """Attend que l'imprimante ait terminé l'impression en cours.
-
-    Cette fonction vérifie le statut de l'imprimante jusqu'à ce qu'elle ne soit
-    plus occupée (busy = False) et pas en mode refroidissement.
-
-    Args:
-        printer: Instance du PrinterDriver
-        timeout_seconds: Timeout maximum en secondes (défaut: 30s)
-
-    Returns:
-        bool: True si l'impression s'est terminée avec succès, False si timeout
-    """
-    start_time = time.time()
-    last_status = None
-
-    while time.time() - start_time < timeout_seconds:
-        try:
-            status = printer.get_status()
-
-            # Si l'imprimante n'est ni occupée ni en refroidissement, c'est terminé
-            if not status.get('is_busy', False) and not status.get('is_cooling', False):
-                print(f"✅ Impression terminée - statut: {status['phase']}")
-                return True
-
-            # Afficher le statut actuel toutes les 2 secondes pour éviter spam
-            current_status = f"{status['phase']} (busy: {status['is_busy']}, cooling: {status['is_cooling']})"
-            if current_status != last_status:
-                print(f"⏳ Statut imprimante: {current_status}")
-                last_status = current_status
-
-            # Attendre un peu avant de revérifier
-            time.sleep(0.5)
-
-        except Exception as e:
-            print(f"⚠️ Erreur lors de la vérification du statut: {e}")
-            time.sleep(1)
-
-    print(f"❌ Timeout ({timeout_seconds}s) dépassé en attendant la fin de l'impression")
-    return False
+            time.sleep(0.1)
 
 # Exemple d'utilisation (dans main.py plus tard) :
-# printer = PrinterDriver()
-# run_worker(printer)
+# run_worker()
 # # Puis lancer FastAPI et l'interface web

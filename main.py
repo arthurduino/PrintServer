@@ -10,7 +10,6 @@ from database import (
     init_db, add_missing_columns_if_needed, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
 )
-from printer_driver import PrinterDriver
 from worker import run_worker
 
 app = FastAPI(title="Print Server API")
@@ -31,12 +30,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Instances globales
-printer: PrinterDriver = None
 worker_running: bool = False
-
-def get_printer_instance() -> PrinterDriver:
-    """Accesseur thread-safe pour l'instance de l'imprimante."""
-    return printer
 
 def set_worker_pause(state: bool):
     """Modifie l'état de pause du worker."""
@@ -45,8 +39,8 @@ def set_worker_pause(state: bool):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialise la base de données, le dossier uploads, la connexion à l'imprimante et démarre le worker."""
-    global printer, worker_running
+    """Initialise la base de données, le dossier uploads et démarre le worker."""
+    global worker_running
     try:
         # Créer le dossier uploads s'il n'existe pas
         os.makedirs("uploads", exist_ok=True)
@@ -57,22 +51,12 @@ async def startup_event():
         add_missing_columns_if_needed()
         print("Base de données initialisée et mise à jour.")
 
-        printer = PrinterDriver()
-        run_worker(printer)
+        run_worker()
         worker_running = True
-        print("Imprimante connectée et worker démarré.")
+        print("Worker démarré avec Brother_QL.")
     except Exception as e:
         print(f"Erreur lors de l'initialisation: {e}")
-        printer = None
         worker_running = False
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Déconnexion propre."""
-    global printer
-    if printer:
-        printer.disconnect()
-        print("Imprimante déconnectée.")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -323,50 +307,20 @@ async def resume_worker():
 
 @app.get("/api/printer/status")
 async def get_printer_status():
-    """Renvoie l'état détaillé actuel de l'imprimante avec tous les codes de statut."""
-    if not printer:
-        return {"status": "Disconnected", "detail": "Imprimante non initialisée", "is_error": True}
-
-    try:
-        status = printer.get_status()
-
-        # Retourner TOUTES les informations du driver pour précision maximale
-        result = {
-            "status": "Ready", # Valeur par défaut
-            "detail": "",
-            "phase": status['phase'],
-            "raw_phase": status['raw_phase'],
-            "is_busy": status['is_busy'],
-            "is_cooling": status['is_cooling'],
-            "paper_empty": status['paper_empty'],
-            "cover_open": status['cover_open'],
-            "is_error": status['is_error']
+    """Renvoie l'état simplifié de l'imprimante (Brother_QL ne fournit pas de monitoring avancé)."""
+    # Avec Brother_QL, nous n'avons pas de monitoring avancé du statut
+    # Retourner un statut générique basé sur l'état du worker
+    if worker_running:
+        return {
+            "status": "Ready",
+            "detail": "Imprimante Brother QL prête - monitoring avancé non disponible avec Brother_QL",
+            "is_error": False,
+            "note": "Utilisation de Brother_QL - fonctionnalités avancées de monitoring non supportées"
         }
-
-        # Déterminer le statut principal basé sur les flags les plus prioritaires
-        if status['cover_open']:
-            result["status"] = "Cover Open"
-            result["detail"] = "Couvercle ouvert - Ouvrez le capot pour accéder à l'imprimante"
-        elif status['paper_empty']:
-            result["status"] = "Paper Empty"
-            result["detail"] = "Papier épuisé - Insérez de nouveaux étiquettes"
-        elif status['phase'] == 'COOLING':
-            result["status"] = "Cooling"
-            result["detail"] = f"Refroidissement en cours (phase brute: {status['raw_phase']}) - L'imprimante chauffe, veuillez patienter"
-        elif status['is_busy']:
-            result["status"] = "Busy"
-            result["detail"] = f"Impression en cours (phase brute: {status['raw_phase']}) - Tâche active"
-        else:
-            result["status"] = "Ready"
-            result["detail"] = f"Prêt à imprimer (phase brute: {status['raw_phase']}) - Prêt pour nouvelle tâche"
-
-        return result
-
-    except Exception as e:
+    else:
         return {
             "status": "Error",
-            "detail": f"Erreur de communication: {str(e)}",
-            "phase": "UNKNOWN",
+            "detail": "Worker non initialisé",
             "is_error": True
         }
 
