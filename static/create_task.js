@@ -1,176 +1,140 @@
-// Configuration des formats d'étiquettes
-const LABEL_CONFIGS = {
-    '62': { width: 62, height: 29, name: '62mm' },
-    '48': { width: 48, height: 25, name: '48mm' },
-    '30': { width: 30, height: 21, name: '30mm' }
-};
-
-// Variables globales pour l'aperçu
-let currentImage = null;
-let currentFile = null;
-let originalImageDimensions = null;
-
-// Initialisation de la page
+// Initialisation de la page création tâche
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Page création tâche chargée');
-    updatePreview();
+    loadProducts();
+    checkProductParameter();
+});
 
-    // Gérer les paramètres d'URL pour les produits
+
+
+// Gestionnaire pour la sélection de produit
+document.getElementById('select-product').addEventListener('change', handleProductChange);
+
+// Fonction pour charger la liste des produits dans le select
+async function loadProducts() {
+    try {
+        const response = await fetch('/api/products');
+        const products = await response.json();
+
+        const select = document.getElementById('select-product');
+        // Garder seulement l'option par défaut
+        select.innerHTML = '<option value="">Sélectionner un produit existant...</option>';
+
+        products.forEach(product => {
+            const option = document.createElement('option');
+            option.value = product.id;
+            option.textContent = `${product.nom} (${product.format_type}mm - ${product.rotation}°)`;
+            option.dataset.product = JSON.stringify(product);
+            select.appendChild(option);
+        });
+
+        console.log(`${products.length} produits chargés`);
+    } catch (error) {
+        console.error('Erreur lors du chargement des produits:', error);
+    }
+}
+
+// Fonction pour vérifier si un produit est passé en paramètre URL
+function checkProductParameter() {
     const urlParams = new URLSearchParams(window.location.search);
     const productId = urlParams.get('product');
+
     if (productId) {
-        loadProductForTask(productId);
+        console.log('Produit spécifié dans l\'URL:', productId);
+        // Attendre que les produits soient chargés puis sélectionner
+        setTimeout(() => {
+            const select = document.getElementById('select-product');
+            select.value = productId;
+            handleProductChange.call(select);
+        }, 500);
     }
-});
+}
 
-// Gestionnaire pour le changement de fichier image
-document.getElementById('files').addEventListener('change', async (event) => {
-    const file = event.target.files[0];
-
-    if (!file) {
-        currentImage = null;
-        currentFile = null;
-        updatePreview();
-        return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-        showMessage('Erreur', 'Veuillez sélectionner un fichier image valide');
-        return;
-    }
-
-    currentFile = file;
-
-    // Lire le fichier en tant que Data URL pour l'aperçu
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        currentImage = e.target.result;
-        console.log('Image chargée, mise à jour de l\'aperçu tâche');
-        updatePreview();
-    };
-    reader.readAsDataURL(file);
-});
-
-// Gestionnaire pour le changement de format
-document.getElementById('label_type').addEventListener('change', () => {
-    if (currentImage) {
-        console.log('Format changé, mise à jour de l\'aperçu tâche');
-        updatePreview();
-    }
-});
-
-// Gestionnaire pour le changement de rotation
-document.getElementById('rotate').addEventListener('change', () => {
-    if (currentImage) {
-        console.log('Rotation changée, mise à jour de l\'aperçu tâche');
-        updatePreview();
-    }
-});
-
-// Fonction principale pour mettre à jour l'aperçu
-function updatePreview() {
-    const previewCanvas = document.getElementById('preview-canvas');
-    const formatSelect = document.getElementById('label_type');
+// Fonction pour gérer le changement de sélection de produit
+function handleProductChange() {
+    const selectedOption = this.options[this.selectedIndex];
+    const productPreview = document.getElementById('product-preview');
+    const customImageSection = document.getElementById('custom-image-section');
+    const fileInput = document.getElementById('files');
+    const labelTypeSelect = document.getElementById('label_type');
     const rotateSelect = document.getElementById('rotate');
 
-    // Nettoyer le canvas
-    previewCanvas.innerHTML = '';
+    if (this.value) {
+        // Un produit est sélectionné
+        const productData = JSON.parse(selectedOption.dataset.product);
 
-    if (!currentImage) {
-        previewCanvas.innerHTML = '<div class="preview-placeholder"><span>Sélectionnez une image pour voir l\'aperçu</span></div>';
-        updateDimensionInfo('--', '--', '0');
-        return;
+        // Afficher la prévisualisation
+        document.getElementById('preview-image').src = `/uploads/${productData.image_path}`;
+        document.getElementById('preview-image').style.transform = `rotate(${productData.rotation}deg)`;
+        document.getElementById('preview-name').textContent = productData.nom;
+        document.getElementById('preview-format').textContent = `${productData.format_type}mm - ${productData.rotation}°`;
+        document.getElementById('preview-description').textContent = productData.description || 'Aucune description';
+
+        productPreview.style.display = 'block';
+
+        // Masquer/cacher la section image personnalisée et rendre certains champs non obligatoires
+        customImageSection.style.display = 'none';
+        fileInput.required = false;
+        labelTypeSelect.required = false;
+        labelTypeSelect.value = '';
+        rotateSelect.required = false;
+        rotateSelect.value = '';
+
+        console.log('Produit sélectionné:', productData.nom);
+    } else {
+        // Aucun produit sélectionné
+        productPreview.style.display = 'none';
+
+        // Afficher la section image personnalisée et rendre les champs obligatoires
+        customImageSection.style.display = 'flex';
+        fileInput.required = true;
+        labelTypeSelect.required = true;
+        rotateSelect.required = true;
+
+        console.log('Aucun produit sélectionné');
     }
-
-    // Créer une image temporaire pour obtenir les dimensions naturelles
-    const tempImg = new Image();
-    tempImg.onload = function() {
-        console.log('Dimensions originales:', tempImg.naturalWidth, 'x', tempImg.naturalHeight);
-
-        // Stocker les dimensions naturelles
-        originalImageDimensions = {
-            width: tempImg.naturalWidth,
-            height: tempImg.naturalHeight
-        };
-
-        // Calculer les dimensions en millimètres - hauteur toujours = format sélectionné
-        const formatValue = parseInt(formatSelect.value);
-        const heightMm = formatValue; // Hauteur fixe selon le format
-        const widthMm = (tempImg.naturalWidth / tempImg.naturalHeight) * heightMm; // Largeur proportionnelle
-
-        console.log('Dimensions calculées:', widthMm.toFixed(1), 'x', heightMm, 'mm');
-
-        // Créer et ajouter l'image à l'aperçu AVEC rotation appliquée visuellement
-        const imgElement = document.createElement('img');
-        imgElement.src = currentImage;
-        imgElement.className = 'preview-image';
-
-        // Appliquer la rotation visuellement dans l'aperçu
-        const currentRotation = parseInt(rotateSelect.value) || 0;
-        imgElement.style.transform = `rotate(${currentRotation}deg)`;
-
-        // Calculer la taille d'affichage avec les dimensions physiques réelles
-        const canvasWidth = 380;
-        const canvasHeight = 280;
-
-        // Dimensions d'affichage en pixels (conversion mm vers pixels à 300 DPI)
-        const displayWidthPx = widthMm * (300 / 25.4);
-        const displayHeightPx = heightMm * (300 / 25.4);
-
-        // Calculer l'échelle pour adapter au canvas
-        const scaleX = canvasWidth / displayWidthPx;
-        const scaleY = canvasHeight / displayHeightPx;
-        const scale = Math.min(scaleX, scaleY, 1);
-
-        imgElement.style.width = (displayWidthPx * scale) + 'px';
-        imgElement.style.height = (displayHeightPx * scale) + 'px';
-        imgElement.style.maxWidth = '100%';
-        imgElement.style.maxHeight = '100%';
-
-        previewCanvas.appendChild(imgElement);
-
-        // Mettre à jour les informations de dimension
-        updateDimensionInfo(widthMm, heightMm, currentRotation.toString());
-    };
-
-    tempImg.src = currentImage;
 }
 
-// Fonction pour mettre à jour les informations de dimensions
-function updateDimensionInfo(widthMm, heightMm, rotation) {
-    const formatSelect = document.getElementById('label_type');
-
-    if (widthMm === '--' || heightMm === '--') {
-        document.getElementById('current-format').textContent = 'Format: --mm';
-        document.getElementById('rotation-info').textContent = 'Rotation: 0°';
-        document.getElementById('actual-size').textContent = 'Taille réelle: -- x -- mm';
-        return;
-    }
-
-    // Trouver le format actuel sélectionné
-    const labelConfig = LABEL_CONFIGS[formatSelect.value];
-
-    document.getElementById('current-format').textContent = `Format: ${labelConfig.name}`;
-    document.getElementById('rotation-info').textContent = `Rotation: ${rotation}°`;
-
-    // Pour l'affichage, tenir compte de la rotation
-    const isRotated = parseInt(rotation) === 90 || parseInt(rotation) === 270;
-    const displayWidth = isRotated ? parseFloat(heightMm) : parseFloat(widthMm);
-    const displayHeight = isRotated ? parseFloat(widthMm) : parseFloat(heightMm);
-
-    document.getElementById('actual-size').textContent = `Taille réelle: ${displayWidth.toFixed(1)} x ${displayHeight.toFixed(1)} mm`;
-}
-
-// Gestion du formulaire de création de tâche
+// Gestion du formulaire de création de tâche (modifiée pour supporter les produits)
 document.getElementById('job-form').addEventListener('submit', async (event) => {
     event.preventDefault();
 
     const formData = new FormData(event.target);
-    const files = formData.getAll('files');
+    const selectedProductId = document.getElementById('select-product').value;
 
-    if (files.length === 0) {
-        showMessage('Erreur', 'Sélectionnez une image');
-        return;
+    let files;
+    let imagePath;
+
+    if (selectedProductId) {
+        // Utiliser un produit existant
+        try {
+            const response = await fetch(`/api/products/${selectedProductId}`);
+            const product = await response.json();
+
+            if (!response.ok) {
+                showMessage('Erreur', 'Produit introuvable');
+                return;
+            }
+
+            // Pour les produits existants, on utilise directement l'image du produit
+            files = []; // Pas de fichiers à uploader
+            imagePath = product.image_path;
+
+            console.log('Utilisation du produit:', product.nom);
+        } catch (error) {
+            showMessage('Erreur', 'Erreur lors de la récupération du produit');
+            return;
+        }
+    } else {
+        // Utiliser une image personnalisée
+        files = formData.getAll('files');
+
+        if (files.length === 0) {
+            showMessage('Erreur', 'Sélectionnez une image ou choisissez un produit');
+            return;
+        }
+
+        imagePath = files[0].name;
     }
 
     // Créer la tâche
@@ -181,10 +145,11 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             type: "BATCH",
             quantite: parseInt(formData.get('quantity')) || 1,
             config: {
-                image_path: files[0].name,
+                image_path: imagePath,
                 cut: formData.get('cut') === 'on',
-                label_type: formData.get('label_type') || '62',
-                rotate: document.getElementById('rotate').value || '0'
+                label_type: selectedProductId ? '' : (formData.get('label_type') || '62'), // Vide si produit, sinon valeur formulaire
+                rotate: selectedProductId ? 0 : parseInt(formData.get('rotate') || '0'), // 0 si produit (rotation déjà appliquée), sinon valeur formulaire
+                product_id: selectedProductId ? parseInt(selectedProductId) : null // ID du produit si utilisé
             }
         }]
     };
@@ -209,8 +174,9 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
         if (response.ok) {
             showMessage('Succès', `Tâche créée (ID: ${result.job_id})`);
             event.target.reset();
+            // Rafraîchir la page pour remettre à zéro le formulaire
             setTimeout(() => {
-                window.location.href = '/';
+                window.location.href = '/new-task';
             }, 2000);
         } else {
             showMessage('Erreur', result.error || 'Erreur inconnue');
