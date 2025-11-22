@@ -78,86 +78,38 @@ class USBListener(threading.Thread):
         self.messages_processed = 0
 
     def run(self):
-        """Boucle principale - ÉCOUTE PASSIVE seulement des vrais événements spontanés Brother."""
-        print("👂 [LISTENER] Démarrage avec écoute passive (pas de polling)")
+        """Boucle principale avec requêtes périodiques Brother (solution robuste)."""
+        print("👂 [LISTENER] Démarrage avec requêtes périodiques Brother (standard)")
 
-        # UNE SEULE requête initiale autorisée
+        # Requête initiale pour vérifier l'état de départ
         self._send_initial_status_request()
 
-        # Attendre que l'imprimante envoie spontanément les vrais événements
-        # (0x05 avec cooling codes dans byte_22)
+        last_status_time = 0
+
+        # Boucle principale de surveillance périodique
         while self.running:
             try:
-                # Essayer de lire un message spontané (timeout court)
-                message = self._try_read_spontaneous_message()
-                if message:
+                current_time = time.time()
+
+                # Requête périodique tous les 3 secondes (respecte spécifications Brother)
+                if current_time - last_status_time >= 3.0:
+                    self._check_printer_status()
+                    last_status_time = current_time
                     self.messages_processed += 1
-                    # Log seulement les vrais événements (pas les 0x00 répétés)
-                    if message[18] != 0x00:  # Ignorer les réponses aux requêtes
-                        current_time = time.strftime('%H:%M:%S')
-                        print(f"[{current_time}] 📨 [LISTENER] Événement spontané reçu: {message[18]:02X}")
-                    self._process_status_message(message)
+
+                    # Log périodique pour confirmer activité
+                    if self.messages_processed % 10 == 0:
+                        current_time_str = time.strftime('%H:%M:%S')
+                        print(f"[{current_time_str}] 🔍 [LISTENER] {self.messages_processed} vérifications - surveillance active")
 
                 # Petit délai pour éviter surcharge CPU
-                time.sleep(0.01)
+                time.sleep(0.5)
 
             except Exception as e:
-                print(f"❌ [LISTENER] Erreur écoute passive: {e}")
-                time.sleep(1)
+                print(f"❌ [LISTENER] Erreur surveillance: {e}")
+                time.sleep(2)  # Pause plus longue en cas d'erreur
 
-        print(f"🛑 [LISTENER] Arrêté - {self.messages_processed} messages spontanés captés")
-
-    def _try_read_spontaneous_message(self):
-        """Essaie de lire un message spontané de l'imprimante selon protocole Brother."""
-        dev = None
-        try:
-            dev = usb.core.find(idVendor=self.vendor_id, idProduct=self.product_id)
-            if dev is None:
-                return None
-
-            # Détacher temporairement
-            try:
-                if dev.is_kernel_driver_active(0):
-                    dev.detach_kernel_driver(0)
-            except (AttributeError, NotImplementedError):
-                pass
-
-            # Configuration
-            dev.set_configuration()
-            cfg = dev.get_active_configuration()
-            intf = cfg[(0,0)]
-
-            ep_in = usb.util.find_descriptor(
-                intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
-            )
-
-            if ep_in:
-                # Timeout augmenté pour capter événements spontanés (Brother peut être lent)
-                try:
-                    # Timeout de 200ms au lieu de 50ms pour laisser temps aux vrais événements
-                    response = ep_in.read(32, timeout=200)
-                    if len(response) == 32:
-                        # Vérifier que c'est un vrai paquet Brother (en-tête valide)
-                        if response[0] == 0x80 and response[1] == 0x20 and response[2] == 0x42:
-                            return response  # Vrai message spontané Brother
-                        else:
-                            print(f"⚠️ [LISTENER] Paquet invalide - en-tête: {response[0]:02X} {response[1]:02X} {response[2]:02X}")
-                            return None
-                except usb.core.USBError as e:
-                    if "timeout" in str(e).lower():
-                        return None  # Timeout normal - pas de message spontané
-                    else:
-                        raise  # Autre erreur
-
-        except Exception as e:
-            # Silencieux - erreurs normales avec USB
-            # print(f"⚠️ [LISTENER] Erreur lecture spontanée: {e}")
-            pass
-        finally:
-            if dev:
-                usb.util.dispose_resources(dev)
-
-        return None
+        print(f"🛑 [LISTENER] Arrêté - {self.messages_processed} vérifications réalisées")
 
     def _check_printer_status(self):
         """Vérifie le statut de l'imprimante avec connexion temporaire (Brother standard)."""
