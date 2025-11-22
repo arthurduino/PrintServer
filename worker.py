@@ -74,6 +74,7 @@ def _worker_loop(printer: PrinterDriver):
                     try:
                         printer_status = printer.get_status()
                         if not printer_status.get('paper_empty', False):
+                            global paper_empty_alert_sent  # Seulement quand on assigne
                             paper_empty_alert_sent = False
                             print("📋 [SMTP] Papier remis - alerte reset pour prochaines notifications")
                     except Exception as e:
