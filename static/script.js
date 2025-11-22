@@ -1,5 +1,5 @@
 // Mise à jour périodique adaptative selon l'activité d'impression
-async function updateInterface(delay = 15000) {
+async function updateInterface(delay = 3000) {
     console.log(`🔄 [UPDATE] Mise à jour programmée dans ${delay}ms`);
 
     setTimeout(async () => {

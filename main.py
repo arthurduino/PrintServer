@@ -175,12 +175,36 @@ async def create_job(
             except Exception as e:
                 return {"error": f"Erreur sauvegarde fichier {file.filename}: {str(e)}"}
 
+    # Pour les produits existants, ajouter leur chemin aux saved_files
+    if not files:  # Si files est vide (produit existant), traiter les product_id
+        for task in command_data.get("taches", []):
+            config = task["config"]
+            if "product_id" in config and config["product_id"]:
+                # Récupérer les infos du produit depuis la BDD
+                product_raw = get_product(config["product_id"])
+                if product_raw:
+                    image_filename = product_raw[5]  # image_path de la BDD (nom seulement)
+                    image_abs_path = os.path.abspath(f"uploads/{image_filename}")
+
+                    # Ajouter à saved_files pour que le mapping fonctionne
+                    saved_files[image_filename] = image_abs_path
+                    print(f"📁 [DEBUG] Produit {config['product_id']} - fichier: {image_filename}, chemin: {image_abs_path}")
+
+                    # Vérifier que le fichier existe réellement
+                    if not os.path.exists(image_abs_path):
+                        print(f"❌ [DEBUG] Fichier manquant: {image_abs_path}")
+                        return {"error": f"Fichier image manquant pour le produit {config['product_id']}: {image_filename}"}
+                    else:
+                        print(f"✅ [DEBUG] Fichier trouvé: {image_abs_path}")
+
     # Modifier les chemins d'images dans les configs des tâches
     for task in command_data.get("taches", []):
         config = task["config"]
         if task["type"] == "BATCH" and "image_path" in config:
             # Remplacer le nom de fichier par le chemin sauvegardé
+            old_path = config["image_path"]
             config["image_path"] = saved_files.get(config["image_path"], config["image_path"])
+            print(f"📁 [DEBUG] Mapping image_path: {old_path} -> {config['image_path']}")
         elif task["type"] == "SERIES" and "images" in config:
             config["images"] = [saved_files.get(img, img) for img in config["images"]]
 

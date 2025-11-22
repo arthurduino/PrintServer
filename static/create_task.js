@@ -219,8 +219,8 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             config: {
                 image_path: imagePath,
                 cut: true,  // Toujours activée
-                label_type: selectedProductId ? 62 : parseInt(formData.get('label_type') || '62'),
-                rotate: selectedProductId ? 0 : parseInt(formData.get('rotate') || '0'),
+                label_type: selectedProductId ? parseInt(product.format_type) : parseInt(formData.get('label_type') || '62'),
+                rotate: selectedProductId ? parseInt(product.rotation) : parseInt(formData.get('rotate') || '0'),
                 product_id: selectedProductId ? parseInt(selectedProductId) : null
             }
         }]
