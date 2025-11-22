@@ -187,11 +187,11 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
     const formData = new FormData(event.target);
     const selectedProductId = document.getElementById('select-product').value;
 
-    let files, imagePath;
+    let files, imagePath, product;
 
     if (selectedProductId) {
         const response = await fetch(`/api/products/${selectedProductId}`);
-        const product = await response.json();
+        product = await response.json();
 
         if (!response.ok) {
             showMessage('Erreur', 'Produit introuvable');
