@@ -22,7 +22,21 @@ class PrinterDriver:
             if self.dev and self.dev.is_kernel_driver_active(0):
                 self.dev.detach_kernel_driver(0)
                 print("✅ Driver Linux détaché de force (récupération gentle).")
+                # Attendre un peu pour que le détachement soit effectif
+                time.sleep(0.1)
                 return True
+            else:
+                print("ℹ️ Pas de driver kernel actif - tentative de réinitialisation USB légère...")
+                # Même si pas de kernel driver actif, forcer une réinitialisation légère
+                if self.dev:
+                    try:
+                        # Essayer de resetter seulement l'interface (plus doux)
+                        self.dev.set_configuration()
+                        time.sleep(0.1)
+                        return True
+                    except Exception as e:
+                        print(f"⚠️ Réinitialisation légère impossible: {e}")
+                        return False
         except Exception as e:
             print(f"⚠️ Impossible de détacher le driver: {e}")
             return False

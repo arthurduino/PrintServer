@@ -296,39 +296,40 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
 
             # Gestion spéciale pour les erreurs de ressource busy (imprimante occupée/verrouillée)
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"Imprimante occupée pour {task_id} - tentative de reset USB...")
-                        # Tenter une récupération gentle (pas de reset destructif)
+                print(f"🔒 Linux a volé l'imprimante pour {task_id} ! Récupération en cours...")
+                # Tenter une récupération gentle (pas de reset destructif)
                 if printer.recuperer_connexion():
-                    print("Récupération connexion réussie, nouvelle tentative d'impression...")
-                    time.sleep(1)  # Petite pause de sécurité
+                    print("✅ Récupération connexion réussie, nouvelle tentative d'impression...")
+                    # Réessaie immédiatement sans délai
                     try:
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
                             blocking=True
                         )
-                        print(f"Impression #{qty_done + 1} réussie après reset USB")
+                        print(f"Impression #{qty_done + 1} réussie après récupération gentle")
                         qty_done += 1
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
-                        print(f"Échec même après reset USB: {retry_e}")
+                        print(f"💥 Échec même après récupération gentle: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
                 else:
-                    print("Reset USB échoué, nouvel essai avec attente classique...")
-                    time.sleep(10)  # Attente classique si reset impossible
+                    print("⚠️ Récupération échouée, nouvel essai avec attente classique...")
+                    # Attente un peu plus courte maintenant que nous avons la bonne logique
+                    time.sleep(3)
                     try:
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
                             blocking=True
                         )
-                        print(f"Impression #{qty_done + 1} réussie au deuxième essai classique")
+                        print(f"Impression #{qty_done + 1} réussie au deuxième essai")
                         qty_done += 1
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
-                        print(f"Échec définitif même après attente classique: {retry_e}")
+                        print(f"💥 Échec définitif même après attente: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
