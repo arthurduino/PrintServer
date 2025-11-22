@@ -304,44 +304,33 @@ class PrinterDriver:
                 time.sleep(1)
                 return False
 
-    def send_data_with_chunking(self, data: bytes) -> bool:
-        """Envoie des données binaires avec chunking pour éviter timeout USB et contrôle de flux."""
+    def send_data_bytes_direct(self, data: bytes, timeout: int = 10000) -> bool:
+        """Envoie des données binaires directement via USB, utile pour données raster."""
         try:
-            # VALIDATION - contrôles préalables
             if not data:
                 raise ValueError("Données vides reçues")
 
-            # 1. ATTENDRE QUE LE BUFFER SOIT LIBRE avant tout envoi
-            print(f"📤 Envoi de {len(data)} octets avec contrôle de flux...")
-            self.attendre_buffer_libre()
-
-            # 2. ENVOI COMMANDE INVALIDATE avant l'image (200 octets nuls)
-            invalidate_cmd = b'\x00' * 200
-            self.safe_write(invalidate_cmd, timeout=10000)
-            print("✅ Commande INVALIDATE envoyée (buffer vidé)")
-
-            # 3. ENVOI PAR CHUNKS DE 4096 OCTETS
-            chunk_size = 4096
-            total_chunks = (len(data) + chunk_size - 1) // chunk_size  # Division avec arrondi supérieur
-
-            for i in range(total_chunks):
-                start_idx = i * chunk_size
-                end_idx = min(start_idx + chunk_size, len(data))
-                chunk = data[start_idx:end_idx]
-
-                # Timeout augmenté à 10 secondes pour gérer ralentissements thermiques
-                success = self.safe_write(chunk, timeout=10000)
-                if not success:
-                    raise Exception(f"Échec envoi chunk {i+1}/{total_chunks}")
-
-                print(f"✅ Chunk {i+1}/{total_chunks} envoyé ({len(chunk)} octets)")
-
-            print(f"✅ Envoi complet réussi: {len(data)} octets en {total_chunks} chunks")
+            # Timeout étendu pour données raster volumineuses
+            self.ep_out.write(data, timeout=timeout)
+            print(f"✅ Données envoyées directement: {len(data)} octets")
             return True
 
-        except Exception as e:
-            print(f"❌ Erreur lors de l'envoi avec chunking: {e}")
-            raise
+        except usb.core.USBError as e:
+            if e.errno == 16:  # Resource Busy
+                print("🔒 Ressource busy lors envoi direct - récupération...")
+                if self.recuperer_connexion():
+                    try:
+                        self.ep_out.write(data, timeout=timeout)
+                        print("✅ Envoi réussi après récupération")
+                        return True
+                    except usb.core.USBError as retry_e:
+                        print(f"❌ Échec même après récupération: {retry_e}")
+                        return False
+                else:
+                    return False
+            else:
+                print(f"❌ Erreur USB envoi direct: {e}")
+                return False
 
     def cut_label(self, copies: int = 1):
         """Effectue une coupe manuelle d'étiquettes.
