@@ -69,7 +69,6 @@ def _worker_loop(printer: PrinterDriver):
         task_data = _get_next_pending_task()
         if not task_data:
             # Reset de l'alerte papier vide si nécessaire (quand du papier est remis)
-            global paper_empty_alert_sent
             if paper_empty_alert_sent:
                 try:
                     printer_status = printer.get_status()
@@ -153,7 +152,6 @@ def _worker_loop(printer: PrinterDriver):
             elif 'Papier vide' in str(e):
                 print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
                 # 📧 ENVOYER UNE ALERTE EMAIL SI LE PAPIER EST VIDE
-                global paper_empty_alert_sent
                 if not paper_empty_alert_sent and email_alerts_enabled:
                     try:
                         printer_status = printer.get_status()
