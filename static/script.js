@@ -95,17 +95,40 @@ function updateCurrentJob(jobs) {
     const currentJob = jobs.find(job => job.statut === 'PROCESSING');
 
     if (currentJob) {
-        const progress = calculateProgress(currentJob);
-        const progressText = calculateProgressText(currentJob);
-        jobDisplay.innerHTML = `
-            <div style="margin-bottom: 10px;">
-                <strong>${currentJob.id}</strong> - ${calculateQuantity(currentJob)} exemplaires
-            </div>
-            <progress max="100" value="${progress}"></progress>
-            <div style="margin-top: 5px; text-align: center;">
-                ${progressText} (${progress.toFixed(1)}%)
-            </div>
-        `;
+        // Afficher CHAQUE tâche en cours individuellement
+        const activeTasks = currentJob.taches.filter(task => task.statut === 'IN_PROGRESS' || task.statut === 'DONE');
+
+        if (activeTasks.length > 0) {
+            const tasksHtml = activeTasks.map(task => {
+                const taskProgress = task.quantite_totale > 0 ? (task.quantite_faite / task.quantite_totale) * 100 : 0;
+                const isTaskDone = task.quantite_faite >= task.quantite_totale;
+                const taskStatus = isTaskDone ? 'Terminée' : `Impression en cours`;
+
+                return `
+                    <div class="current-task-item ${isTaskDone ? 'task-done' : ''}" style="border: 2px solid ${isTaskDone ? '#10b981' : '#f59e0b'}; padding: 10px; margin-bottom: 10px; border-radius: 8px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">
+                            Commande ${currentJob.id} - ${taskStatus}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            ${task.type_tache} • ${task.quantite_faite}/${task.quantite_totale} exemplaires
+                        </div>
+                        <progress max="100" value="${taskProgress}" style="width: 100%; height: 8px;"></progress>
+                        <div style="margin-top: 5px; text-align: center; font-size: 0.9em;">
+                            ${task.quantite_faite}/${task.quantite_totale} (${taskProgress.toFixed(0)}%)
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            jobDisplay.innerHTML = `${tasksHtml}`;
+        } else {
+            // Pas de tâche active actuellement
+            jobDisplay.innerHTML = `
+                <div class="current-task-item" style="border: 2px solid #6b7280; padding: 10px; border-radius: 8px;">
+                    Commande ${currentJob.id} en préparation - Aucune tâche active
+                </div>
+            `;
+        }
     } else {
         jobDisplay.innerHTML = '<p>Aucune tâche en cours</p>';
     }
