@@ -115,11 +115,11 @@ class ProductApp {
             productCard.className = 'product-card';
             productCard.innerHTML = `
                 <div class="product-image">
-                    <img src="/uploads/${product.image_path}" alt="${product.nom}" style="transform: rotate(${product.rotation}deg);">
+                    <img src="/uploads/${product.image_path}" alt="${product.nom}" style="transform: rotate(${product.rotation - 90}deg);">
                 </div>
                 <div class="product-info">
                     <h3>${product.nom}</h3>
-                    <p class="product-format">${product.format_type}mm - ${product.rotation}°</p>
+                    <p class="product-format">${product.format_type}mm - ${(product.rotation - 90 + 360) % 360}°</p>
                     ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                 </div>
                 <div class="product-actions">
