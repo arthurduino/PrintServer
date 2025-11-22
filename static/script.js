@@ -63,39 +63,123 @@ document.addEventListener('DOMContentLoaded', () => {
     updateInterface();
 });
 
+// Variable globale pour l'état du worker
+let workerPausedState = false;
+
 // Mise à jour détaillée du statut de l'imprimante
 function updatePrinterStatus(statusData) {
     const statusEl = document.getElementById('printer-status');
 
-    if (statusData.status === 'Disconnected') {
-        statusEl.innerHTML = `
-            <div style="color: #e74c3c; font-weight: bold;">❌ IMPRIMANTE DÉCONNECTÉE</div>
-            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail || 'Aucune connexion établie'}</div>
-        `;
-    } else if (statusData.is_error) {
-        statusEl.innerHTML = `
-            <div style="color: #e74c3c; font-weight: bold;">⚠️ ERREUR DE COMMUNICATION</div>
-            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail || 'Erreur inconnue'}</div>
-            <div style="font-size: 0.8em; margin-top: 3px; color: #888;">
-                Phase: ${statusData.phase || 'UNKNOWN'}
-            </div>
-        `;
-    } else {
-        // Construire un statut détaillé avec toutes les informations
-        const mainStatus = getMainStatusDisplay(statusData);
-        const flagsDisplay = buildFlagsDisplay(statusData);
-        const codesDisplay = statusData.raw_phase !== undefined ?
-            `<div style="font-size: 0.8em; margin-top: 3px; color: #666; font-family: monospace;">
-                Code brut: ${statusData.raw_phase}
-            </div>` : '';
+    // Supprimer les classes précédentes
+    statusEl.classList.remove('status-ready', 'status-busy', 'status-cooling', 'status-cover-open', 'status-paper-empty', 'status-error', 'status-disconnected');
 
-        statusEl.innerHTML = `
-            <div style="font-weight: bold;">${mainStatus}</div>
-            <div style="font-size: 0.9em; margin-top: 5px;">${statusData.detail}</div>
-            ${flagsDisplay}
-            ${codesDisplay}
-        `;
+    let statusClass = '';
+    let mainStatus = '';
+    let description = '';
+    let flags = [];
+    let codeDisplay = '';
+
+    if (statusData.status === 'Disconnected') {
+        statusClass = 'status-disconnected';
+        mainStatus = '❌ IMPRIMANTE DÉCONNECTÉE';
+        description = statusData.detail || 'Aucune connexion établie';
+        flags = [{ text: 'Déconnectée', type: 'error' }];
+    } else if (statusData.is_error) {
+        statusClass = 'status-error';
+        mainStatus = '⚠️ ERREUR DE COMMUNICATION';
+        description = statusData.detail || 'Erreur inconnue';
+        flags = [{ text: 'Erreur système', type: 'error' }];
+        if (statusData.phase) {
+            codeDisplay = statusData.phase;
+        }
+    } else {
+        // Déterminer la classe CSS basée sur le statut
+        switch (statusData.status) {
+            case 'Ready':
+                statusClass = 'status-ready';
+                mainStatus = '🟢 PRÊT';
+                flags.push({ text: 'Machine prête', type: 'positive' });
+                break;
+            case 'Busy':
+                statusClass = 'status-busy';
+                mainStatus = '🔵 OCCUPÉ';
+                flags.push({ text: 'Impression active', type: 'neutral' });
+                break;
+            case 'Cooling':
+                statusClass = 'status-cooling';
+                mainStatus = '🟠 REFROIDISSEMENT';
+                flags.push({ text: 'Machine en chauffe', type: 'warning' });
+                break;
+            case 'Cover Open':
+                statusClass = 'status-cover-open';
+                mainStatus = '🟡 COUVERCLE OUVERT';
+                flags.push({ text: 'Accès nécessaire', type: 'warning' });
+                break;
+            case 'Paper Empty':
+                statusClass = 'status-paper-empty';
+                mainStatus = '🟡 PAPIER ÉPUISÉ';
+                flags.push({ text: 'Recharge nécessaire', type: 'warning' });
+                break;
+            default:
+                statusClass = 'status-error';
+                mainStatus = '🔴 STATUS INCONNU';
+        }
+
+        description = statusData.detail || '';
+
+        // Ajouter les flags individuels
+        if (statusData.cover_open) {
+            flags.push({ text: 'Couvercle ouvert', type: 'warning' });
+        }
+        if (statusData.paper_empty) {
+            flags.push({ text: 'Papier vide', type: 'warning' });
+        }
+        if (statusData.is_cooling) {
+            flags.push({ text: 'Refroidissement actif', type: 'warning' });
+        }
+        if (statusData.is_busy) {
+            flags.push({ text: 'Imprimante active', type: 'neutral' });
+        }
+
+        // Afficher le code brut si disponible
+        if (statusData.raw_phase !== undefined) {
+            codeDisplay = statusData.raw_phase.toString();
+        }
     }
+
+    // Ajouter la classe CSS du statut principal
+    if (statusClass) {
+        statusEl.classList.add(statusClass);
+    }
+
+    // Construire le HTML avec les classes appropriées
+    let flagsHTML = '';
+    if (flags.length > 0) {
+        flagsHTML = `<div class="status-flags">
+            ${flags.map(flag => {
+                let flagClass = 'status-flag';
+                switch (flag.type) {
+                    case 'positive': flagClass += ' positive'; break;
+                    case 'warning': flagClass += ' warning'; break;
+                    case 'error': flagClass += ' status-error'; break;
+                    default: flagClass += ' neutral'; break;
+                }
+                return `<span class="${flagClass}">${flag.text}</span>`;
+            }).join('')}
+        </div>`;
+    }
+
+    let codeHTML = '';
+    if (codeDisplay) {
+        codeHTML = `<div class="status-code-display">Code: ${codeDisplay}</div>`;
+    }
+
+    statusEl.innerHTML = `
+        <div>${mainStatus}</div>
+        <div>${description}</div>
+        ${flagsHTML}
+        ${codeHTML}
+    `;
 
     // Gérer les boutons selon le statut et les erreurs
     const pauseBtn = document.getElementById('pause-btn');
@@ -595,14 +679,40 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
 
 // Contrôles worker
 document.getElementById('pause-btn').addEventListener('click', async () => {
-    await fetch('/api/control/pause', { method: 'POST' });
-    showMessage('Info', 'Worker mis en pause');
+    try {
+        const response = await fetch('/api/control/pause', { method: 'POST' });
+        if (response.ok) {
+            workerPausedState = true;
+            showMessage('Info', '⏸️ Worker mis en pause');
+            updateWorkerStatusIndicator();
+        } else {
+            showMessage('Erreur', 'Impossible de mettre le worker en pause');
+        }
+    } catch (error) {
+        showMessage('Erreur', 'Erreur réseau lors de la mise en pause');
+    }
 });
 
 document.getElementById('resume-btn').addEventListener('click', async () => {
-    await fetch('/api/control/resume', { method: 'POST' });
-    showMessage('Info', 'Worker relancé');
+    try {
+        const response = await fetch('/api/control/resume', { method: 'POST' });
+        if (response.ok) {
+            workerPausedState = false;
+            showMessage('Info', '▶️ Worker relancé');
+            updateWorkerStatusIndicator();
+        } else {
+            showMessage('Erreur', 'Impossible de relancer le worker');
+        }
+    } catch (error) {
+        showMessage('Erreur', 'Erreur réseau lors du relancement');
+    }
 });
+
+// Met à jour l'indicateur visuel de l'état du worker
+function updateWorkerStatusIndicator() {
+    // Cette fonction est appelée quand on change manuellement l'état
+    // L'indicateur sera rafraîchi à la prochaine mise à jour automatique
+}
 
 // Message overlay
 function showMessage(title, message) {

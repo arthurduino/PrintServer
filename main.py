@@ -313,13 +313,13 @@ async def _create_job_with_type(command_json: str, files: List[UploadFile], type
 async def pause_worker():
     """Met le worker en pause (ex: changement de papier)."""
     set_worker_pause(False)
-    return {"status": "Worker relancé"}
+    return {"status": "Worker mis en pause"}
 
 @app.post("/api/control/resume")
 async def resume_worker():
     """Relance le worker après pause."""
     set_worker_pause(True)
-    return {"status": "Worker mis en pause"}
+    return {"status": "Worker relancé"}
 
 @app.get("/api/printer/status")
 async def get_printer_status():

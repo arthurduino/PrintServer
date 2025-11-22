@@ -89,16 +89,181 @@ h2 {
 .status-section {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.2);
 }
 
 .status-display {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 24px;
 }
 
 #printer-status {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 20px;
+    min-height: 120px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #1f2937;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Enhanced status display styling */
+#printer-status div:first-child {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+}
+
+#printer-status div:nth-child(2) {
     font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+#printer-status div:nth-child(3) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+#printer-status div:nth-child(4) {
+    font-family: 'Courier New', monospace;
+    background: #f3f4f6;
+    color: #6b7280;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    align-self: flex-start;
+    margin-top: 4px;
+    border: 1px solid #e5e7eb;
+}
+
+/* Status-specific color schemes */
+#printer-status:has(.status-ready) {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    border-color: #10b981;
+    color: #065f46;
+}
+
+#printer-status:has(.status-ready) div:first-child {
+    color: #047857;
+}
+
+#printer-status:has(.status-busy) {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+#printer-status:has(.status-busy) div:first-child {
+    color: #1d4ed8;
+}
+
+#printer-status:has(.status-cooling) {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+#printer-status:has(.status-cooling) div:first-child {
+    color: #78350f;
+}
+
+#printer-status:has(.status-cover-open),
+#printer-status:has(.status-paper-empty) {
+    background: linear-gradient(135deg, #fefce8 0%, #fde68a 100%);
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+#printer-status:has(.status-cover-open) div:first-child,
+#printer-status:has(.status-paper-empty) div:first-child {
+    color: #78350f;
+}
+
+#printer-status:has(.status-error),
+#printer-status:has(.status-disconnected) {
+    background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
+#printer-status:has(.status-error) div:first-child,
+#printer-status:has(.status-disconnected) div:first-child {
+    color: #b91c1c;
+}
+
+/* Add classes for status-based styling */
+.status-ready { background: #10b981; }
+.status-busy { background: #3b82f6; }
+.status-cooling { background: #f59e0b; }
+.status-cover-open { background: #f59e0b; }
+.status-paper-empty { background: #f59e0b; }
+.status-error { background: #ef4444; }
+.status-disconnected { background: #ef4444; }
+
+#printer-status .status-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.status-flag {
+    background: rgba(255, 255, 255, 0.8);
+    color: #374151;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(4px);
+}
+
+.status-flag.positive {
+    background: rgba(16, 185, 129, 0.2);
+    color: #065f46;
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.status-flag.warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #92400e;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.status-flag.neutral {
+    background: rgba(59, 130, 246, 0.2);
+    color: #1e40af;
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.status-code-display {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #374151;
+    align-self: flex-start;
+    margin-top: 8px;
+    letter-spacing: 0.05em;
 }
 
 /* Form styles */
