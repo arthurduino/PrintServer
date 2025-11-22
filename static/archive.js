@@ -31,18 +31,59 @@ async function loadCompletedJobs() {
         completedJobs.sort((a, b) => new Date(b.date_creation) - new Date(a.date_creation));
 
         const jobsHtml = completedJobs.map(job => {
-            const totalQuantity = job.taches.reduce((sum, task) => sum + task.quantite_totale, 0);
-            const completedDate = new Date(job.date_creation);
+            const jobDate = new Date(job.date_creation);
+            const taskDetails = job.taches.map(task => {
+                const isCompleted = task.statut === 'DONE';
+                const isErrored = task.statut === 'ERROR';
+                const wasProcessing = task.statut === 'IN_PROGRESS';
+
+                let statusClass = 'status-completed';
+                let statusText = 'Terminée';
+                let statusIcon = '✅';
+
+                if (isErrored) {
+                    statusClass = 'status-error';
+                    statusText = 'Erreur';
+                    statusIcon = '❌';
+                } else if (wasProcessing) {
+                    statusClass = 'status-interrupted';
+                    statusText = 'Interrompue';
+                    statusIcon = '⚠️';
+                }
+
+                return `
+                    <div class="archive-task-item ${isErrored ? 'error-task' : wasProcessing ? 'interrupted-task' : ''}">
+                        <div class="task-header">
+                            <strong>${statusIcon} Tâche #${task.id}</strong>
+                            <span class="task-status ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="task-details">
+                            <div class="task-progress-info">
+                                <span class="progress-text">${task.quantite_faite}/${task.quantite_totale} exemplaires</span>
+                                <small>${task.type_tache} - ${job.nom_client}</small>
+                            </div>
+                            ${task.config && task.config.image_path ?
+                                `<div class="task-image-name">📄 ${task.config.image_path}</div>` : ''}
+                        </div>
+                        ${task.statut === 'ERROR' ?
+                            `<div class="error-details">💥 Tâche interrompue en cours d'impression</div>` : ''}
+                        ${task.statut === 'IN_PROGRESS' ?
+                            `<div class="interrupted-details">⏸️ Tâche interrompue après ${task.quantite_faite} impressions</div>` : ''}
+                    </div>
+                `;
+            }).join('');
 
             return `
-                <div class="completed-item">
-                    <div class="completed-header">
-                        <strong>Tâche ${job.id}</strong>
-                        <span class="status-completed">Terminée</span>
+                <div class="archive-job-card">
+                    <div class="job-summary">
+                        <h4>Commande #${job.id} - ${job.nom_client}</h4>
+                        <div class="job-meta">
+                            <span class="completion-date">Terminée le ${jobDate.toLocaleString()}</span>
+                            <span class="total-stats">${job.taches.length} tâche(s) • ${job.taches.reduce((sum, t) => sum + t.quantite_faite, 0)}/${job.taches.reduce((sum, t) => sum + t.quantite_totale, 0)} exemplaires</span>
+                        </div>
                     </div>
-                    <div class="completed-details">
-                        <span>${totalQuantity} exemplaire(s)</span>
-                        <small>Terminée le ${completedDate.toLocaleString()}</small>
+                    <div class="job-tasks">
+                        ${taskDetails}
                     </div>
                 </div>
             `;

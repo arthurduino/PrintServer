@@ -1020,6 +1020,157 @@ progress::-moz-progress-bar {
     padding: 20px;
 }
 
+/* === ARCHIVE STYLES === */
+
+/* Archive job cards */
+.archive-job-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.archive-job-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+}
+
+.job-summary {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    padding: 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.job-summary h4 {
+    margin: 0 0 8px 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.job-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.completion-date {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.total-stats {
+    background: #3b82f6;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Archive task items */
+.job-tasks {
+    padding: 16px;
+}
+
+.archive-task-item {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.archive-task-item:hover {
+    border-color: #667eea;
+    background: #fdfdfe;
+}
+
+.archive-task-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Error and interrupted task styling */
+.error-task {
+    border-left: 4px solid #ef4444;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.05) 0%, rgba(255, 255, 255, 0.05) 100%);
+}
+
+.interrupted-task {
+    border-left: 4px solid #f59e0b;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.05) 0%, rgba(255, 255, 255, 0.05) 100%);
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.task-header strong {
+    font-size: 1rem;
+    color: #1f2937;
+}
+
+.task-status.status-completed {
+    background: #10b981;
+}
+
+.task-status.status-error {
+    background: #ef4444;
+}
+
+.task-status.status-interrupted {
+    background: #f59e0b;
+}
+
+.task-details {
+    margin-bottom: 8px;
+}
+
+.task-progress-info {
+    margin-bottom: 4px;
+}
+
+.progress-text {
+    font-weight: 600;
+    color: #374151;
+    margin-right: 12px;
+}
+
+.task-image-name {
+    font-size: 0.85rem;
+    color: #667eea;
+    margin-top: 4px;
+}
+
+/* Error and interruption details */
+.error-details {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: #dc2626;
+    margin-top: 8px;
+}
+
+.interrupted-details {
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: #d97706;
+    margin-top: 8px;
+}
+
 /* Full width form groups */
 .full-width {
     width: 100%;
