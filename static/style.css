@@ -353,6 +353,35 @@ progress::-moz-progress-bar {
     transform: scale(1.1);
 }
 
+/* Recovery task styling - for tasks restarted after crash */
+.recovery-task {
+    border-left: 4px solid #f39c12;
+    background: linear-gradient(90deg, rgba(243, 156, 18, 0.05) 0%, rgba(255, 255, 255, 0.05) 100%);
+    position: relative;
+}
+
+.recovery-task::before {
+    content: "🔄";
+    position: absolute;
+    top: -8px;
+    right: 16px;
+    font-size: 1.2rem;
+    background: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.recovery-notice {
+    color: #f39c12;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
 .queue-item:last-child,
 .completed-item:last-child {
     border-bottom: none;

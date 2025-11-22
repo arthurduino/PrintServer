@@ -132,6 +132,7 @@ function updateJobList(jobs) {
                     taskId: task.id,
                     taskType: task.type_tache,
                     quantity: task.quantite_totale,
+                    progress: task.quantite_faite || 0,  // Pour la reprise automatique
                     date: job.date_creation,
                     config: task.config
                 });
@@ -145,8 +146,13 @@ function updateJobList(jobs) {
         return;
     }
 
-    queueList.innerHTML = pendingTasks.map(task => `
-        <div class="queue-item" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
+    queueList.innerHTML = pendingTasks.map(task => {
+        // Calculer la progression pour cette tâche spécifique
+        const isRecovery = task.progress && task.progress > 0;
+        const taskProgressText = isRecovery ? ` (${task.progress}/${task.quantity})` : '';
+
+        return `
+        <div class="queue-item ${isRecovery ? 'recovery-task' : ''}" data-job-id="${task.jobId}" data-task-id="${task.taskId}">
             <div class="task-preview">
                 ${task.config && task.config.image_path ?
                     `<img src="/uploads/${task.config.image_path}" alt="Aperçu tâche #${task.taskId}" class="task-thumbnail" onerror="this.style.display='none'">` :
@@ -154,16 +160,18 @@ function updateJobList(jobs) {
                 }
             </div>
             <div class="info">
-                <strong>Tâche #${task.taskId}</strong> - ${task.clientName}
-                <br><small>${task.quantity} exemplaires - ${task.taskType} - ${new Date(task.date).toLocaleString()}</small>
+                <strong>Tâche #${task.taskId}${isRecovery ? ' 🔄' : ''}</strong> - ${task.clientName}
+                <br><small>${task.quantity} exemplaires${taskProgressText} - ${task.taskType} - ${new Date(task.date).toLocaleString()}</small>
                 ${task.config && task.config.image_path ? `<br><small class="image-name">${task.config.image_path}</small>` : ''}
+                ${isRecovery ? `<br><small class="recovery-notice">Reprise automatique - ${task.progress} déjà imprimé(s)</small>` : ''}
             </div>
             <div class="queue-actions">
                 <span class="quantity">${task.quantity}</span>
                 <button class="delete-btn" onclick="deleteTask(${task.taskId})" title="Supprimer cette tâche">🗑️</button>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Calcul de la progression

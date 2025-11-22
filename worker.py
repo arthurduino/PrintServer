@@ -29,9 +29,11 @@ paused = True  # True = actif, False = mis en pause
 
 def run_worker(printer: PrinterDriver):
     """Lance le worker en daemon thread."""
+    # RÉCUPÉRATION APRÈS REDÉMARRAGE : remettre les tâches IN_PROGRESS orphelines en PENDING
+    _recover_orphaned_tasks_on_startup()
     thread = threading.Thread(target=_worker_loop, args=(printer,), daemon=True)
     thread.start()
-    print("Worker démarré en thread daemon.")
+    print("Worker démarré en thread daemon - récupération d'état activée.")
 
 def _worker_loop(printer: PrinterDriver):
     """Boucle principale du worker pour traiter les tâches."""
@@ -146,6 +148,33 @@ def _update_command_status(cmd_id: int, status: str):
     cursor = conn.cursor()
     cursor.execute("UPDATE commandes SET statut_global = ? WHERE id = ?", (status, cmd_id))
     conn.commit()
+    conn.close()
+
+def _recover_orphaned_tasks_on_startup():
+    """Remet les tâches IN_PROGRESS orphelines en PENDING après un redémarrage du process."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    # Trouver les tâches IN_PROGRESS (qui ont été interrompues par un crash/redémarrage)
+    cursor.execute("SELECT id, commande_id, quantite_faite FROM taches WHERE statut = 'IN_PROGRESS'")
+    orphaned_tasks = cursor.fetchall()
+
+    if orphaned_tasks:
+        print(f"🔄 RECOVERY: {len(orphaned_tasks)} tâches IN_PROGRESS orphelines trouvées au démarrage")
+
+        for task_id, cmd_id, qty_done in orphaned_tasks:
+            # Remettre la tâche en PENDING pour qu'elle soit reprise
+            cursor.execute("UPDATE taches SET statut = 'PENDING' WHERE id = ?", (task_id,))
+            # Remettre la commande en PROCESSING si elle était DONE (cas où le process crash après dernière tâche)
+            cursor.execute("UPDATE commandes SET statut_global = 'PROCESSING' WHERE id = ? AND statut_global = 'DONE'", (cmd_id,))
+
+            print(f"🔄 RECOVERY: Tâche {task_id} (commande {cmd_id}) - {qty_done} impressions déjà faites - remise en PENDING")
+
+        conn.commit()
+        print(f"✅ RECOVERY: {len(orphaned_tasks)} tâches récupérées avec succès")
+    else:
+        print("ℹ️  RECOVERY: Aucune tâche orpheline au démarrage")
+
     conn.close()
 
 def _update_task_progress(task_id: int, qty_done: int):
