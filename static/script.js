@@ -100,11 +100,49 @@ function updatePrinterStatus(statusData) {
     statusEl.innerHTML = `<div>${mainStatus}</div><div>${description}</div>`;
 }
 
-// File d'attente
+// Mise à jour de la tâche en cours et de la file d'attente
 function updateJobList(jobs) {
+    const currentJobEl = document.getElementById('current-job');
     const queueList = document.getElementById('job-list');
-    const pendingTasks = [];
 
+    // Tâche en cours (PROCESSING)
+    const processingJobs = jobs.filter(job => job.statut === 'PROCESSING');
+    if (processingJobs.length > 0) {
+        const currentJob = processingJobs[0]; // Première tâche en cours
+        const currentTask = currentJob.taches.find(task => task.statut === 'IN_PROGRESS') || currentJob.taches[0];
+
+        if (currentTask) {
+            const progress = Math.round((currentTask.quantite_faite / currentTask.quantite_totale) * 100);
+            const imageHtml = currentTask.config?.image_path ?
+                `<img src="/uploads/${currentTask.config.image_path.split('/').pop()}" style="width: 60px; height: 40px; object-fit: cover; border-radius: 5px; margin-right: 15px;">` :
+                '📄';
+
+            currentJobEl.innerHTML = `
+                <div style="display: flex; align-items: center; padding: 15px; border: 1px solid #28a745; background: #f8fff9; border-radius: 8px;">
+                    ${imageHtml}
+                    <div style="flex: 1;">
+                        <div><strong>${currentJob.nom_client}</strong></div>
+                        <div>Tâche #${currentTask.id} - ${currentTask.type_tache}</div>
+                        <div style="margin-top: 5px;">
+                            <div style="background: #e9ecef; border-radius: 10px; height: 10px; width: 200px;">
+                                <div style="background: #28a745; height: 100%; border-radius: 10px; width: ${progress}%;"></div>
+                            </div>
+                            <div style="font-size: 0.9em; margin-top: 5px; color: #666;">
+                                ${currentTask.quantite_faite}/${currentTask.quantite_totale} (${progress}%)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            currentJobEl.innerHTML = '<p>Aucune tâche en cours</p>';
+        }
+    } else {
+        currentJobEl.innerHTML = '<p>Aucune tâche en cours</p>';
+    }
+
+    // File d'attente (PENDING)
+    const pendingTasks = [];
     jobs.filter(job => job.statut === 'PENDING').forEach(job => {
         job.taches.forEach(task => {
             if (task.quantite_faite < task.quantite_totale) {
