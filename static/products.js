@@ -25,6 +25,11 @@ class ProductApp {
     }
 
     bindFormEvents() {
+        // Détection automatique de rotation pour les images en portrait
+        document.getElementById('product-files').addEventListener('change', (e) => {
+            this.handleImageSelection(e.target.files[0]);
+        });
+
         document.getElementById('product-form').addEventListener('submit', async (event) => {
             event.preventDefault();
             console.log('📝 Soumission formulaire produit');
@@ -163,6 +168,34 @@ class ProductApp {
     showError(message) {
         console.error('❌', message);
         alert(message);
+    }
+
+    // Détection automatique de rotation pour les images en portrait
+    async handleImageSelection(file) {
+        if (!file) return;
+
+        try {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                // Nettoyer l'URL pour éviter les fuites mémoire
+                URL.revokeObjectURL(url);
+
+                // Si l'image est en portrait (hauteur > largeur), définir rotation à 90°
+                if (img.height > img.width) {
+                    document.getElementById('product-rotate').value = '90';
+                    console.log('📏 Image portrait détectée - rotation automatique à 90°');
+                } else {
+                    // Garder la rotation par défaut (0°) pour les images paysage
+                    document.getElementById('product-rotate').value = '0';
+                }
+            };
+
+            img.src = url;
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'analyse de l\'image:', error);
+        }
     }
 }
 

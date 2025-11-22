@@ -53,16 +53,20 @@
                     </div>
                 </div>
 
+                <!-- Section Quantité (toujours visible) -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="quantity">Quantité:</label>
+                        <input type="number" id="quantity" name="quantity" value="1" min="1" required>
+                    </div>
+                </div>
+
                 <!-- Section Image personnalisée -->
                 <div class="form-row" id="custom-image-section">
                     <div class="form-group">
                         <label for="files">Image personnalisée:</label>
                         <input type="file" id="files" name="files" accept="image/*" required>
                         <small class="form-hint">Obligatoire si aucun produit n'est sélectionné</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="quantity">Quantité:</label>
-                        <input type="number" id="quantity" name="quantity" value="1" min="1" required>
                     </div>
                     <div class="form-group">
                         <label for="label_type">Format:</label>
@@ -83,11 +87,6 @@
                             <option value="270">270°</option>
                         </select>
                         <small class="form-hint">Obligatoire si aucun produit n'est sélectionné</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="cut" class="checkbox-label">
-                            <input type="checkbox" id="cut" name="cut" checked> Découpe
-                        </label>
                     </div>
                     <div class="form-group">
                         <button type="submit" class="btn btn-primary full-width">

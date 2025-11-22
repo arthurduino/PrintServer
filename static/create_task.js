@@ -34,6 +34,11 @@ class CreateTaskApp {
         document.getElementById('select-product').addEventListener('change', (e) => {
             this.handleProductSelection(e.target.value);
         });
+
+        // Détection automatique de rotation pour les images en portrait
+        document.getElementById('files').addEventListener('change', (e) => {
+            this.handleImageSelection(e.target.files[0]);
+        });
     }
 
     async loadProducts() {
@@ -122,23 +127,56 @@ class CreateTaskApp {
         const fileInput = document.getElementById('files');
         const labelTypeSelect = document.getElementById('label_type');
         const rotateSelect = document.getElementById('rotate');
+        const rotateFormGroup = rotateSelect.closest('.form-group');
 
         if (productSelected) {
             customImageSection.style.display = 'none';
             fileInput.required = false;
             labelTypeSelect.required = false;
             rotateSelect.required = false;
+            // Masquer aussi la ligne du rotate quand un produit est sélectionné
+            if (rotateFormGroup) rotateFormGroup.style.display = 'none';
         } else {
             customImageSection.style.display = 'flex';
             fileInput.required = true;
             labelTypeSelect.required = true;
             rotateSelect.required = true;
+            // Réafficher la ligne du rotate quand pas de produit sélectionné
+            if (rotateFormGroup) rotateFormGroup.style.display = 'block';
         }
     }
 
     showError(message) {
         console.error('❌', message);
         alert(message);
+    }
+
+    // Détection automatique de rotation pour les images en portrait
+    async handleImageSelection(file) {
+        if (!file) return;
+
+        try {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                // Nettoyer l'URL pour éviter les fuites mémoire
+                URL.revokeObjectURL(url);
+
+                // Si l'image est en portrait (hauteur > largeur), définir rotation à 90°
+                if (img.height > img.width) {
+                    document.getElementById('rotate').value = '90';
+                    console.log('📏 Image portrait détectée - rotation automatique à 90°');
+                } else {
+                    // Garder la rotation par défaut (0°) pour les images paysage
+                    document.getElementById('rotate').value = '0';
+                }
+            };
+
+            img.src = url;
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'analyse de l\'image:', error);
+        }
     }
 }
 
@@ -180,7 +218,7 @@ document.getElementById('job-form').addEventListener('submit', async (event) => 
             quantite: parseInt(formData.get('quantity')) || 1,
             config: {
                 image_path: imagePath,
-                cut: formData.get('cut') === 'on',
+                cut: true,  // Toujours activée
                 label_type: selectedProductId ? '' : (formData.get('label_type') || '62'),
                 rotate: selectedProductId ? 0 : parseInt(formData.get('rotate') || '0'),
                 product_id: selectedProductId ? parseInt(selectedProductId) : null
