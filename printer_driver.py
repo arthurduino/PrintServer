@@ -23,18 +23,24 @@ class PrinterState:
 
     def set_cooling(self, active: bool):
         with self._lock:
+            old_state = self.cooling_active
             self.cooling_active = active
-            print(f"🔄 [STATE] Cooling {'ACTIVÉ' if active else 'DÉSACTIVÉ'}")
+            current_time = time.strftime('%H:%M:%S')
+            print(f"[{current_time}] 🔄 [STATE] Cooling changé: {old_state} → {active} ({'❄️ ACTIVÉ' if active else '🔥 DÉSACTIVÉ'})")
 
     def set_error(self, error_type: str, message: str):
         with self._lock:
+            old_error = self.error_message
             self.error_message = f"{error_type}: {message}"
-            print(f"❌ [STATE] Erreur définie: {self.error_message}")
+            current_time = time.strftime('%H:%M:%S')
+            print(f"[{current_time}] ❌ [STATE] Erreur définie: {old_error} → {self.error_message}")
 
     def clear_error(self):
         with self._lock:
+            old_error = self.error_message
             self.error_message = None
-            print("✅ [STATE] Erreur effacée")
+            current_time = time.strftime('%H:%M:%S')
+            print(f"[{current_time}] ✅ [STATE] Erreur effacée: {old_error} → None")
 
     def get_state(self):
         with self._lock:
@@ -171,6 +177,9 @@ class USBListener(threading.Thread):
                     response = ep_in.read(32, timeout=100)
                     if len(response) >= 32:
                         self._process_status_message(response)
+                        # Log de debug périodique pour confirmer que le Listener fonctionne
+                        if time.time() % 30 < 1:  # Une fois par minute environ
+                            print(f"[{time.strftime('%H:%M:%S')}] 🔍 [LISTENER] Écoute active - message traité")
                 except usb.core.USBError as e:
                     if "timeout" not in str(e).lower():
                         # Erreur réelle (pas timeout normal)
@@ -277,8 +286,11 @@ class USBWriter(threading.Thread):
 
                     # Vérifier l'état de refroidissement AVANT chaque envoi
                     state = printer_state.get_state()
+                    current_time = time.strftime('%H:%M:%S')
+                    print(f"[{current_time}] 📊 [WRITER] État vérifié: cooling={state['cooling_active']}, error='{state['error']}'")
+
                     if state['cooling_active']:
-                        print("❄️ [WRITER] Refroidissement actif - mise en pause")
+                        print(f"[{current_time}] ❄️ [WRITER] Refroidissement actif - mise en pause (tâche remise en file)")
                         # Remettre la tâche dans la file pour la traiter plus tard
                         write_queue.put(task_data)
                         time.sleep(0.5)  # Attendre avant de revérifier
@@ -286,11 +298,12 @@ class USBWriter(threading.Thread):
 
                     # Vérifier les erreurs
                     if state['error']:
-                        print(f"❌ [WRITER] Erreur active: {state['error']} - attente résolution")
+                        print(f"[{current_time}] ❌ [WRITER] Erreur active: {state['error']} - tâche remise en file")
                         write_queue.put(task_data)  # Remettre en file
                         time.sleep(1)
                         continue
 
+                    print(f"[{current_time}] ✅ [WRITER] Conditions OK - envoi autorisé")
                     # Envoyer les données
                     self._send_raster_data(task_data)
 
@@ -350,6 +363,11 @@ class USBWriter(threading.Thread):
             self.ep_out.write(raster_data, timeout=10000)
 
             print(f"[{current_time}] ✅ [WRITER] Données étiquette #{label_num} envoyées")
+
+            # DÉLAI MINIMUM entre impressions pour éviter surcharge mécanique
+            # L'ancienne implémentation avait des pauses, il faut les respecter
+            min_inter_print_delay = 1.0  # 1 seconde minimum entre impressions
+            time.sleep(min_inter_print_delay)
 
         except usb.core.USBError as e:
             error_msg = f"Erreur USB écriture: {e}"
