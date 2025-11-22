@@ -564,8 +564,8 @@ async def delete_tache_api(tache_id: int):
                 print(f"🗑️ [TASK_DELETE] La commande {command_id} est en cours d'impression, suppression de tâche refusée")
                 return {"error": "Impossible de supprimer une tâche tant que la commande est en cours d'impression"}
 
-            # Marquer la tâche comme CANCELLED
-            _execute_with_retry("UPDATE taches SET statut = 'CANCELLED' WHERE id = ?", (tache_id,))
+            # Marquer la tâche comme DONE (logiquement supprimée)
+            _execute_with_retry("UPDATE taches SET statut = 'DONE' WHERE id = ?", (tache_id,))
 
             # Vérifier si c'était la dernière tâche en attente de la commande
             _execute_with_retry("""
