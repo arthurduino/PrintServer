@@ -16,6 +16,17 @@ class PrinterDriver:
         self.ep_in = None
         self.connect_usb()
 
+    def recuperer_connexion(self):
+        """Force le détachement du driver si Linux a repris la main sans reset destructif."""
+        try:
+            if self.dev and self.dev.is_kernel_driver_active(0):
+                self.dev.detach_kernel_driver(0)
+                print("✅ Driver Linux détaché de force (récupération gentle).")
+                return True
+        except Exception as e:
+            print(f"⚠️ Impossible de détacher le driver: {e}")
+            return False
+
     def connect_usb(self):
         """Trouve et connecte la QL-700, détache kernel_driver si nécessaire."""
         print(f"Recherche de l'imprimante Brother QL-700 (VID:{VENDOR_ID:04x}, PID:{PRODUCT_ID:04x})...")
@@ -166,26 +177,35 @@ class PrinterDriver:
             raise Exception(f"Échec de la reconnexion USB: {e}")
 
     def reset_usb_device(self):
-        """Reset l'interface USB de l'imprimante pour libérer les ressources busy."""
-        try:
-            print("Tentative de reset USB de l'imprimante...")
-            if self.dev:
-                # Reset l'interface USB 0
-                self.dev.reset()
-                print("Reset USB effectué - attente de 2 secondes pour stabilization...")
-                time.sleep(2)  # Attendre que l'imprimante se stabilise
+        """Récupère gentiment la connexion sans reset destructif (OBSOLÈTE - utiliser recuperer_connexion)."""
+        print("⚠️ Ancienne méthode reset appelée - utilisation récupération gentle...")
+        return self.recuperer_connexion()
 
-                # Essayer de reconnecter
-                print("Tentative de reconnexion après reset...")
-                usb.util.dispose_resources(self.dev)
-                self.dev = None
+    def safe_write(self, data, timeout=5000):
+        """Écrit des données avec récupération automatique en cas d'erreur Resource busy."""
+        try:
+            self.ep_out.write(data, timeout=timeout)
+            return True
+        except usb.core.USBError as e:
+            if e.errno == 16:  # Resource Busy - Linux a repris le contrôle
+                print("🔒 Linux a volé l'imprimante ! Récupération en cours...")
+                if self.recuperer_connexion():
+                    try:
+                        # Réessaie après récupération
+                        self.ep_out.write(data, timeout=timeout)
+                        print("✅ Écriture réussie après récupération connexion")
+                        return True
+                    except usb.core.USBError as retry_e:
+                        print(f"❌ Échec même après récupération: {retry_e}")
+                        return False
+                else:
+                    print("❌ Impossible de récupérer la connexion")
+                    return False
+            else:
+                # Autre erreur USB - attend un peu avant de signaler
+                print(f"⚠️ Erreur USB noncritique: {e} - pause 1s...")
                 time.sleep(1)
-                self.connect_usb()
-                print("Reconnexion après reset réussie !")
-                return True
-        except Exception as e:
-            print(f"Échec du reset USB: {e}")
-            return False
+                return False
 
     def disconnect(self):
         """Déconnecte l'imprimante (reset USB et remise du kernel driver)."""

@@ -297,13 +297,10 @@ def _process_batch_task(printer: PrinterDriver, task_id: int, cmd_id: int, confi
             # Gestion spéciale pour les erreurs de ressource busy (imprimante occupée/verrouillée)
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
                 print(f"Imprimante occupée pour {task_id} - tentative de reset USB...")
-                # Tenter de reset l'imprimante pour libérer les ressources
-                reset_success = printer.reset_usb_device()
-
-                if reset_success:
-                    print("Reset USB réussi, tentative d'impression après reset...")
-                    # Attendre 5 secondes pour laisser l'imprimante se stabiliser complètement
-                    time.sleep(5)
+                        # Tenter une récupération gentle (pas de reset destructif)
+                if printer.recuperer_connexion():
+                    print("Récupération connexion réussie, nouvelle tentative d'impression...")
+                    time.sleep(1)  # Petite pause de sécurité
                     try:
                         send(
                             instructions=form,
@@ -400,28 +397,26 @@ def _process_series_task(printer: PrinterDriver, task_id: int, cmd_id: int, conf
 
             # Gestion spéciale pour les erreurs de ressource busy
             if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"Imprimante occupée pour série {task_id} - tentative de reset USB...")
-                reset_success = printer.reset_usb_device()
-
-                if reset_success:
-                    print("Reset USB réussi pour série, tentative d'impression après reset...")
-                    time.sleep(5)  # Attendre 5 secondes pour laisser l'imprimante se stabiliser complètement
+                print(f"Imprimante occupée pour série {task_id} - récupération connexion...")
+                if printer.recuperer_connexion():
+                    print("Récupération connexion réussie pour série, nouvelle tentative...")
+                    time.sleep(1)  # Petite pause de sécurité
                     try:
                         send(
                             instructions=form,
                             printer_identifier="usb://04f9:2042",
                             blocking=True
                         )
-                        print(f"Impression série #{qty_done + 1} réussie après reset USB")
+                        print(f"Impression série #{qty_done + 1} réussie après récupération")
                         qty_done += 1
                         _update_task_progress(task_id, qty_done)
                     except Exception as retry_e:
-                        print(f"Échec de la série même après reset USB: {retry_e}")
+                        print(f"Échec de la série même après récupération: {retry_e}")
                         _update_task_status(task_id, 'ERROR')
                         _update_command_status(cmd_id, 'ERROR')
                         return
                 else:
-                    print("Reset USB échoué pour série, nouvel essai avec attente classique...")
+                    print("Récupération échouée pour série, nouvel essai avec attente classique...")
                     time.sleep(10)
                     try:
                         send(
