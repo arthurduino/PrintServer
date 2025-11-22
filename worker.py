@@ -153,9 +153,9 @@ def _worker_loop(printer: PrinterDriver):
             elif 'Papier vide' in str(e):
                 print(f"Tâche {task_id} échouée : papier vide - recharger le rouleau d'étiquettes")
                 # 📧 ENVOYER UNE ALERTE EMAIL SI LE PAPIER EST VIDE
+                global paper_empty_alert_sent
                 if not paper_empty_alert_sent and email_alerts_enabled:
                     if send_paper_alert_email({}):
-                        global paper_empty_alert_sent
                         paper_empty_alert_sent = True
                         print("📧 [SMTP] Alerte papier vide envoyée depuis _worker_loop")
                     else:
