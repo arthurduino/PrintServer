@@ -226,6 +226,56 @@ def _get_task_cooling_until(task_id: int) -> Optional[float]:
     conn.close()
     return result[0] if result and result[0] and result[0] > 0 else None
 
+def _preprocess_image(image_path: str, task_id: int) -> str:
+    """Pré-traite l'image : redimensionnement automatique pour compatibilité Brother QL-700."""
+    try:
+        from PIL import Image
+        print(f"🔧 [PREPROCESS] Analyse image: {image_path}")
+
+        # Ouvrir l'image pour analyse
+        with Image.open(image_path) as img:
+            original_width, original_height = img.size
+            print(f"🔧 [PREPROCESS] Dimensions originales: {original_width}x{original_height}")
+
+            # Dimensions idéales pour Brother QL-700 (62mm label)
+            target_width = 696  # ~62mm à 300dpi
+            target_height = int((original_height * target_width) / original_width)
+
+            # Limiter la hauteur maximale pour éviter les timeouts
+            max_height = 1200  # ~100mm max pour éviter surcharge
+            if target_height > max_height:
+                target_height = max_height
+                target_width = int((original_width * target_height) / original_height)
+
+            print(f"🔧 [PREPROCESS] Dimensions cibles: {target_width}x{target_height}")
+
+            # Redimensionner seulement si nécessaire
+            if original_width != target_width or original_height > max_height:
+                # Créer le répertoire temporaire s'il n'existe pas
+                temp_dir = os.path.join(os.path.dirname(image_path), 'temp_processed')
+                os.makedirs(temp_dir, exist_ok=True)
+
+                # Générer le nouveau nom de fichier
+                filename = f"processed_{task_id}_{int(time.time())}.png"
+                processed_path = os.path.join(temp_dir, filename)
+
+                # Redimensionner l'image
+                resized_img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                resized_img.save(processed_path, 'PNG')
+
+                print(f"🔧 [PREPROCESS] Image redimensionnée sauvegardée: {processed_path}")
+                return processed_path
+            else:
+                print(f"🔧 [PREPROCESS] Image déjà aux bonnes dimensions - utilisation directe")
+                return image_path
+
+    except ImportError:
+        print("⚠️ [PREPROCESS] PIL/Pillow non installé - utilisation image originale")
+        return image_path
+    except Exception as e:
+        print(f"⚠️ [PREPROCESS] Erreur lors du pré-traitement: {e} - utilisation image originale")
+        return image_path
+
 def _check_command_completion(cmd_id: int):
     """Vérifie si toutes les tâches de la commande sont DONE, si oui marque commande DONE."""
     conn = sqlite3.connect(DB_FILE)
@@ -254,9 +304,13 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
 
     try:
-        # 1. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
+        # 1. PRÉ-TRAITEMENT DE L'IMAGE (Redimensionnement automatique)
+        processed_image_path = _preprocess_image(image_path, task_id)
+        print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
+
+        # 2. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ (compression désactivée pour compatibilité Brother QL-700)
         qlr = BrotherQLRaster(MODEL)
-        instructions = convert(qlr, [image_path], '62', cut=True, dither=True, compress=True, rotate='90')
+        instructions = convert(qlr, [processed_image_path], '62', cut=True, dither=True, compress=False, rotate='90')
 
         # 2. CONNEXION PERSISTANTE - Ouverte UNE FOIS au début
         dev = usb.core.find(idVendor=0x04f9, idProduct=0x2042)
