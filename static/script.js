@@ -1,7 +1,12 @@
 // Mise à jour périodique adaptative selon l'activité d'impression
-function updateInterface(delay = 15000) {
+async function updateInterface(delay = 15000) {
     setTimeout(async () => {
         try {
+            // Mise à jour du statut de l'imprimante en parallèle
+            const statusResponse = await fetch('/api/printer/status');
+            const statusData = await statusResponse.json();
+            updatePrinterStatus(statusData);
+
             const jobsResponse = await fetch('/api/jobs');
             const jobs = await jobsResponse.json();
 
@@ -12,19 +17,22 @@ function updateInterface(delay = 15000) {
             updateJobList(jobs);
 
             // Programmer la prochaine mise à jour selon l'activité
-            const nextDelay = hasActiveJob ? 5000 : 120000; // 5s si actif, 2min si inactif
+            const nextDelay = hasActiveJob ? 2000 : 10000; // 2s si actif, 10s si inactif
             updateInterface(nextDelay);
 
         } catch (error) {
             console.error('Erreur mise à jour:', error);
-            // En cas d'erreur, attendre 30 secondes avant de réessayer
-            updateInterface(30000);
+            // En cas d'erreur, attendre 5 secondes avant de réessayer
+            updateInterface(5000);
         }
     }, delay);
 }
 
-// Démarrer les mises à jour
-updateInterface();
+// Attendre le chargement du DOM avant de démarrer
+document.addEventListener('DOMContentLoaded', () => {
+    // Démarrer les mises à jour
+    updateInterface();
+});
 
 // Mise à jour du statut de l'imprimante
 function updatePrinterStatus(statusData) {

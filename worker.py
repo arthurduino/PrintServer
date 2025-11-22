@@ -34,7 +34,7 @@ def _worker_loop(printer: PrinterDriver):
     while True:
         task_data = _get_next_pending_task()
         if not task_data:
-            time.sleep(2)
+            time.sleep(0.1)  # Délai réduit pour une meilleure réactivité du statut
             continue
 
         task_id, cmd_id, type_t, config_json, qty_tot, qty_done = task_data

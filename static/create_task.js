@@ -95,20 +95,25 @@ class CreateTaskApp {
         const product = this.data.selectedProduct;
         if (!product) return;
 
-        const productPreview = document.getElementById('product-preview');
-        productPreview.style.display = 'block';
+        // Afficher la prévisualisation avec animation
+        const productPreviewRow = document.getElementById('product-preview-row');
+        productPreviewRow.style.display = 'block';
+        productPreviewRow.classList.add('fade-in');
 
+        // Mettre à jour les données
         document.getElementById('preview-image').src = `/uploads/${product.image_path}`;
         document.getElementById('preview-image').style.transform = `rotate(${product.rotation}deg)`;
         document.getElementById('preview-name').textContent = product.nom;
         document.getElementById('preview-format').textContent = `${product.format_type}mm - ${product.rotation}°`;
         document.getElementById('preview-description').textContent = product.description || 'Aucune description';
 
+        // Ajuster les champs du formulaire
         this.adjustFormFields(true);
     }
 
     hideProductPreview() {
-        document.getElementById('product-preview').style.display = 'none';
+        const productPreviewRow = document.getElementById('product-preview-row');
+        productPreviewRow.style.display = 'none';
         this.adjustFormFields(false);
     }
 
