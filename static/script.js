@@ -482,11 +482,18 @@ function createTaskHTML(task) {
     // Générer le HTML en une seule fois pour éviter les problèmes de concaténation
     const recoveryClass = isRecovery ? ' recovery-task' : '';
     const recoveryIcon = isRecovery ? '<span class="recovery">🔄</span>' : '';
-    const imageHtml = task.config && task.config.image_path ?
-        `<img src="/uploads/${filename}" alt="task" class="task-img">` : '📄';
+
+    let imageHtml, imageClass;
+    if (task.config && task.config.image_path) {
+        imageHtml = `<img src="/uploads/${filename}" alt="task">`;
+        imageClass = '';
+    } else {
+        imageHtml = '📄';
+        imageClass = ' no-image';
+    }
 
     return `<div class="queue-item simple-queue-item${recoveryClass}" data-job-id="${jobId}" data-task-id="${task.taskId}">
-        <div class="task-image">${imageHtml}</div>
+        <div class="task-image${imageClass}">${imageHtml}</div>
         <div class="task-info">
             <div class="task-line1">
                 <strong>Tâche #${task.taskId}</strong>${recoveryIcon}<span class="qty">${task.quantity}${taskProgressText}</span>
