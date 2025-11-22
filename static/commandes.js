@@ -1,8 +1,9 @@
+// État global pour les commandes
+let availableProducts = [];
+let commandProducts = [];
+
 // Gestionnaire pour la page Commandes
 document.addEventListener('DOMContentLoaded', function() {
-    // État global
-    let availableProducts = [];
-    let commandProducts = [];
 
     // Événements principaux
     document.getElementById('command-form').addEventListener('submit', handleCommandSubmit);
