@@ -99,6 +99,7 @@ def _worker_loop(printer: PrinterDriver):
                 time.sleep(0.1)
                 continue
             else:
+                # Tâche prête à reprendre - nettoyer le flag de refroidissement
                 _clear_task_cooling_wait(task_id)
                 print(f"✅ Tâche {task_id} prête à reprendre après refroidissement")
 
@@ -210,9 +211,10 @@ def _get_task_progress(task_id: int) -> int:
     """Récupère la quantité déjà faite pour une tâche (pour reprise après redémarrage)."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("UPDATE taches SET cooling_until = ? WHERE id = ?", (cooling_until_timestamp, task_id))
-    conn.commit()
+    cursor.execute("SELECT quantite_faite FROM taches WHERE id = ?", (task_id,))
+    result = cursor.fetchone()
     conn.close()
+    return result[0] if result else 0
 
 def _set_task_cooling_wait(task_id: int):
     """Marque une tâche comme en attente de fin de refroidissement de l'imprimante."""
