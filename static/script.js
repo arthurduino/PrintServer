@@ -105,11 +105,9 @@ function updateJobList(jobs) {
     const queueList = document.getElementById('job-list');
     const pendingTasks = [];
 
-    // Traiter toutes les commandes (pas seulement celles en PENDING)
-    jobs.forEach(job => {
-        // Pour chaque tâche de chaque commande, vérifier si elle a encore du travail à faire
+    jobs.filter(job => job.statut === 'PENDING').forEach(job => {
         job.taches.forEach(task => {
-            if (task.quantite_faite < task.quantite_totale && task.statut !== 'DONE') {
+            if (task.quantite_faite < task.quantite_totale) {
                 pendingTasks.push({
                     jobId: job.id,
                     clientName: job.nom_client,

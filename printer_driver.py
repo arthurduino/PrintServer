@@ -41,42 +41,6 @@ class PrinterDriver:
             print(f"⚠️ Impossible de détacher le driver: {e}")
             return False
 
-    def attendre_buffer_libre(self):
-        """Attend que l'imprimante soit prête (buffer libre) - Flow Control manuel."""
-        timeout_start = time.time()
-        max_timeout = 30.0  # 30 secondes maximum
-
-        while True:
-            # Timeout global
-            if time.time() - timeout_start > max_timeout:
-                raise Exception("Timeout: Imprimante toujours occupée après 30 secondes")
-
-            # Envoie commande statut ESC i S
-            try:
-                self.ep_out.write(b'\x1B\x69\x53', timeout=5000)
-                response = self.ep_in.read(32, timeout=5000)
-            except usb.core.USBError as e:
-                raise Exception(f"Erreur USB lors de la requête statut: {e}")
-
-            # Vérification de la taille de réponse
-            if len(response) < 32:
-                raise Exception(f"Réponse statut incomplète: {len(response)} octets reçus au lieu de 32")
-
-            # Vérifie octet d'erreur (index 8)
-            if response[8] != 0:
-                erreur_code = response[8]
-                raise Exception(f"Erreur imprimante détectée (code: {erreur_code})")
-
-            # Vérifie octet de statut (index 18) - bit 0 pour BUSY/IDLE
-            is_busy = (response[18] & 0x01) != 0
-
-            if not is_busy:
-                print("✅ Imprimante prête (buffer libre)")
-                return True
-            else:
-                print("⏳ Imprimante occupée, attente 0.5s...")
-                time.sleep(0.5)
-
     def connect_usb(self):
         """Trouve et connecte la QL-700, détache kernel_driver si nécessaire."""
         print(f"Recherche de l'imprimante Brother QL-700 (VID:{VENDOR_ID:04x}, PID:{PRODUCT_ID:04x})...")
@@ -105,35 +69,32 @@ class PrinterDriver:
             print("Kernel driver: non applicable ou déjà détaché")
             pass
 
+        # Configure l'appareil
         try:
-            # Configure l'appareil
             self.dev.set_configuration()
             print("Configuration USB définie")
-
-            # Obtient la configuration active
-            cfg = self.dev.get_active_configuration()
-            intf = cfg[(0,0)]
-
-            # Trouve les endpoints IN et OUT
-            self.ep_out = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
-            )
-            self.ep_in = usb.util.find_descriptor(
-                intf,
-                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
-            )
-
-            if not self.ep_out or not self.ep_in:
-                raise Exception("Endpoints USB non trouvés - vérifiez le modèle d'imprimante")
-
-            print("Connexion USB établie avec succès")
-
-        except Exception as e:
-            # FORCE CLEANUP même en cas d'erreur d'initialisation
-            if self.dev:
-                usb.util.dispose_resources(self.dev)
+        except usb.core.USBError as e:
+            print(f"Erreur configuration USB: {e}")
             raise
+
+        # Obtient la configuration active
+        cfg = self.dev.get_active_configuration()
+        intf = cfg[(0,0)]
+
+        # Trouve les endpoints IN et OUT
+        self.ep_out = usb.util.find_descriptor(
+            intf,
+            custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+        )
+        self.ep_in = usb.util.find_descriptor(
+            intf,
+            custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+        )
+
+        if not self.ep_out or not self.ep_in:
+            raise Exception("Endpoints USB non trouvés - vérifiez le modèle d'imprimante")
+
+        print("Connexion USB établie avec succès")
 
     def get_status(self) -> Dict:
         """Envoie la commande ESC i S et lit la réponse sans connexion persistante."""
@@ -304,34 +265,6 @@ class PrinterDriver:
                 time.sleep(1)
                 return False
 
-    def send_data_bytes_direct(self, data: bytes, timeout: int = 10000) -> bool:
-        """Envoie des données binaires directement via USB, utile pour données raster."""
-        try:
-            if not data:
-                raise ValueError("Données vides reçues")
-
-            # Timeout étendu pour données raster volumineuses
-            self.ep_out.write(data, timeout=timeout)
-            print(f"✅ Données envoyées directement: {len(data)} octets")
-            return True
-
-        except usb.core.USBError as e:
-            if e.errno == 16:  # Resource Busy
-                print("🔒 Ressource busy lors envoi direct - récupération...")
-                if self.recuperer_connexion():
-                    try:
-                        self.ep_out.write(data, timeout=timeout)
-                        print("✅ Envoi réussi après récupération")
-                        return True
-                    except usb.core.USBError as retry_e:
-                        print(f"❌ Échec même après récupération: {retry_e}")
-                        return False
-                else:
-                    return False
-            else:
-                print(f"❌ Erreur USB envoi direct: {e}")
-                return False
-
     def cut_label(self, copies: int = 1):
         """Effectue une coupe manuelle d'étiquettes.
 
@@ -363,3 +296,4 @@ class PrinterDriver:
             self.dev = None
 
 # Note : Sur Raspberry Pi, pyusb nécessite des permissions root ou des règles udev appropriées.
+            usb.util.dispose_resources(self.dev)
