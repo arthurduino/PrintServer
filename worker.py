@@ -244,19 +244,19 @@ def _preprocess_image(image_path: str, task_id: int, config: dict) -> str:
 
             # Dimensions cibles basées sur le DPI et le type d'étiquette
             # 696px pour 62mm @ 300dpi, 1392px pour 62mm @ 600dpi
-            target_width = 696 * (dpi / 300)
+            target_width = int(696 * (dpi / 300))
             target_height = int((original_height * target_width) / original_width)
 
             # Limiter la hauteur maximale pour éviter les timeouts
             max_height = 1200  # ~100mm max pour éviter surcharge
             if target_height > max_height:
                 target_height = max_height
-                target_width = int((original_width * target_height) / original_height)
+                target_width = int((original_width * target_height) / original_height) # Assurer que c'est un entier
 
             print(f"🔧 [PREPROCESS] Dimensions cibles: {target_width}x{target_height}")
 
             # Redimensionner seulement si nécessaire
-            if original_width != target_width or original_height > max_height:
+            if int(original_width) != target_width or int(original_height) > max_height:
                 # Créer le répertoire temporaire s'il n'existe pas
                 temp_dir = os.path.join(os.path.dirname(image_path), 'temp_processed')
                 os.makedirs(temp_dir, exist_ok=True)
@@ -306,7 +306,7 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
 
     # Récupération des paramètres d'optimisation (valeurs par défaut sécurisées)
-    label_type = config.get('label_type', '62')
+    label_type = str(config.get('label_type', '62')) # Forcer la conversion en string pour robustesse
     dither_enabled = config.get('dither', True)
     dpi = config.get('dpi', 300)
     print(f"⚙️ [CONFIG] dpi={dpi}, dither={dither_enabled}, label='{label_type}'")
@@ -450,7 +450,7 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         raise ValueError("Config SERIES manquante: images (liste de chemins)")
 
     # Récupération des paramètres d'optimisation (valeurs par défaut sécurisées)
-    label_type = config.get('label_type', '62')
+    label_type = str(config.get('label_type', '62')) # Forcer la conversion en string pour robustesse
     dither_enabled = config.get('dither', True)
     dpi = config.get('dpi', 300)
     cut = config.get('cut', True)
