@@ -479,33 +479,43 @@ function createTaskHTML(task) {
         filename = pathParts[pathParts.length - 1];
     }
 
-    return `
-    <div class="queue-item simple-queue-item ${isRecovery ? 'recovery-task' : ''}" data-job-id="${jobId}" data-task-id="${task.taskId}">
-        <div class="task-image-container">
-            ${task.config && task.config.image_path ?
-                `<img src="/uploads/${filename}" alt="Aperçu tâche" class="task-image"
-                     onerror="this.style.display='none'; this.parentNode.innerHTML='<div class="no-image">📄</div>'">` :
-                '<div class="no-image">📄</div>'
-            }
-        </div>
-        <div class="task-info">
-            <div class="task-primary">
-                <strong>Tâche #${task.taskId}</strong>
-                ${isRecovery ? '<span class="recovery-icon">🔄</span>' : ''}
-                <span class="quantity-display">${task.quantity}${taskProgressText ? ` <em>(${taskProgressText})</em>` : ''}</span>
-            </div>
-            <div class="task-secondary">
-                <span class="client">${clientName}</span>
-                <span class="separator">•</span>
-                <span class="timestamp">${formattedDate}</span>
-            </div>
-        </div>
-        <div class="task-actions">
-            <span class="quantity-count">${task.quantity}</span>
-            <button class="delete-button" onclick="deleteTask(${task.taskId})" title="Supprimer">×</button>
-        </div>
-    </div>
-    `;
+    let html = '<div class="queue-item simple-queue-item';
+    if (isRecovery) {
+        html += ' recovery-task';
+    }
+    html += '" data-job-id="' + jobId + '" data-task-id="' + task.taskId + '">';
+
+    html += '<div class="task-image">';
+    if (task.config && task.config.image_path) {
+        html += '<img src="/uploads/' + filename + '" alt="task" class="task-img">';
+    } else {
+        html += '📄';
+    }
+    html += '</div>';
+
+    html += '<div class="task-info">';
+    html += '<div class="task-line1">';
+    html += '<strong>Tâche #' + task.taskId + '</strong>';
+    if (isRecovery) {
+        html += '<span class="recovery">🔄</span>';
+    }
+    html += '<span class="qty">' + task.quantity + taskProgressText + '</span>';
+    html += '</div>';
+
+    html += '<div class="task-line2">';
+    html += '<span class="name">' + clientName + '</span>';
+    html += '<span class="date">' + formattedDate + '</span>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '<div class="task-actions">';
+    html += '<span class="badge">' + task.quantity + '</span>';
+    html += '<button class="del" onclick="deleteTask(' + task.taskId + ')">×</button>';
+    html += '</div>';
+
+    html += '</div>';
+
+    return html;
 }
 
 // Mise à jour de la file d'attente (fonction originale, maintenant utilisée seulement pour mise à jour complète)
