@@ -163,13 +163,14 @@ class CreateTaskApp {
                 // Nettoyer l'URL pour éviter les fuites mémoire
                 URL.revokeObjectURL(url);
 
-                // Si l'image est en portrait (hauteur > largeur), définir rotation à 90°
+                // Pour l'aperçu : images paysages = 0° (droite), images portraits = 90° (rotaté)
                 if (img.height > img.width) {
                     document.getElementById('rotate').value = '90';
-                    console.log('📏 Image portrait détectée - rotation automatique à 90°');
+                    console.log('📏 Image portrait détectée - rotation automatique à 90° pour aperçu');
                 } else {
-                    // Garder la rotation par défaut (0°) pour les images paysage
+                    // Image paysage : ne pas appliquer de rotation sur l'aperçu (rester droite)
                     document.getElementById('rotate').value = '0';
+                    console.log('🖼️ Image paysage détectée - pas de rotation pour aperçu');
                 }
             };
 
