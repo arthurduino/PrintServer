@@ -70,7 +70,7 @@ def _worker_loop(printer: PrinterDriver):
             # Continuer immédiatement au lieu de dormir (auto-recovery gérera la reconnexion)
 
 def _get_next_pending_task() -> Optional[tuple]:
-    """Récupère la prochaine tâche PENDING triée par ID commande + ordre."""
+    """Récupère la prochaine tâche PENDING triée par priorité + ID commande + ordre."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''
@@ -78,7 +78,7 @@ def _get_next_pending_task() -> Optional[tuple]:
         FROM taches t
         JOIN commandes c ON t.commande_id = c.id
         WHERE t.statut = 'PENDING'
-        ORDER BY c.id, t.ordre
+        ORDER BY t.priorite DESC, c.id, t.ordre
         LIMIT 1
     ''')
     task = cursor.fetchone()

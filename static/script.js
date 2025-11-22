@@ -116,10 +116,12 @@ function updateJobList(jobs) {
     queueList.innerHTML = pendingJobs.map(job => `
         <div class="queue-item">
             <div class="info">
-                <strong>${job.id}</strong> - ${calculateQuantity(job)} exemplaires
-                <br><small>${new Date(job.date_creation).toLocaleString()}</small>
+                <strong>Commande #${job.id}</strong> - ${job.nom_client}
+                <br><small>${calculateQuantity(job)} exemplaires - ${new Date(job.date_creation).toLocaleString()}</small>
             </div>
-            <span class="quantity">${calculateQuantity(job)}</span>
+            <div class="queue-actions">
+                <span class="quantity">${calculateQuantity(job)}</span>
+            </div>
         </div>
     `).join('');
 }

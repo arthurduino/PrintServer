@@ -27,6 +27,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             commande_id INTEGER NOT NULL,
             ordre INTEGER NOT NULL,
+            priorite INTEGER DEFAULT 1,  -- Niveau de priorité (1=normal, 2=haute, 3=urgente)
             type_tache TEXT NOT NULL CHECK(type_tache IN ('BATCH', 'SERIES')),
             config_json TEXT,  -- Stocké comme chaîne JSON
             quantite_totale INTEGER NOT NULL,
@@ -158,6 +159,16 @@ def update_tache_progress(tache_id: int, quantite_faite: int):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('UPDATE taches SET quantite_faite = ? WHERE id = ?', (quantite_faite, tache_id))
+    conn.commit()
+    conn.close()
+
+def update_tache_priorite(tache_id: int, priorite: int):
+    """Met à jour la priorité d'une tâche."""
+    if priorite not in [1, 2, 3]:
+        raise ValueError("Priorité invalide (1-3)")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE taches SET priorite = ? WHERE id = ?', (priorite, tache_id))
     conn.commit()
     conn.close()
 

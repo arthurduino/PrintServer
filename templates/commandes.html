@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commandes - Print Server</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <h1 class="nav-title">🖨️ Serveur d'Impression</h1>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Accueil</a>
+                <a href="/new-task" class="nav-link">Nouvelle tâche</a>
+                <a href="/commandes" class="nav-link active">Commandes</a>
+                <a href="/products" class="nav-link">Produits</a>
+                <a href="/archive" class="nav-link">Archive</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Liste des commandes -->
+        <div class="section commands-section">
+            <h2>Gestion des commandes</h2>
+            <div class="section-header">
+                <button id="new-command-btn" class="btn btn-primary">Nouvelle commande</button>
+            </div>
+            <div id="commands-list" class="commands-list">
+                <p>Chargement des commandes...</p>
+            </div>
+        </div>
+
+        <!-- Modal création/modification commande -->
+        <div id="command-modal" class="modal" style="display: none;">
+            <div class="modal-content large-modal">
+                <div class="modal-header">
+                    <h3 id="modal-title">Nouvelle commande</h3>
+                    <span class="modal-close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="command-form">
+                        <!-- Informations générales -->
+                        <div class="form-section">
+                            <h4>Informations générales</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="nom_client">Nom du client:</label>
+                                    <input type="text" id="nom_client" name="nom_client" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="reference_externe">Référence externe:</label>
+                                    <input type="text" id="reference_externe" name="reference_externe">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recherche et ajout de produits -->
+                        <div class="form-section">
+                            <h4>Produits de la commande</h4>
+
+                            <!-- Barre de recherche produit -->
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="product-search">Rechercher un produit:</label>
+                                    <div class="search-container">
+                                        <input type="text" id="product-search" placeholder="Tapez pour rechercher...">
+                                        <div id="product-search-results" class="search-results" style="display: none;">
+                                            <!-- Résultats de recherche -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Liste des produits ajoutés à la commande -->
+                            <div id="command-products" class="command-products">
+                                <p class="no-products">Aucun produit ajouté à la commande</p>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="cancel-btn" class="btn btn-secondary">Annuler</button>
+                    <button type="button" id="save-btn" class="btn btn-primary">Créer la commande</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message overlay -->
+    <div id="message-overlay" class="message-overlay" style="display: none;">
+        <div class="message-content">
+            <h3 id="message-title">Succès</h3>
+            <p id="message-text">Commande créée</p>
+            <button id="message-close" class="btn btn-secondary">OK</button>
+        </div>
+    </div>
+
+    <script src="/static/commandes.js"></script>
+</body>
+</html>

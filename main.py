@@ -96,6 +96,12 @@ async def get_products_page():
     with open("templates/products.html") as f:
         return f.read()
 
+@app.get("/commandes", response_class=HTMLResponse)
+async def get_commandes_page():
+    """Sert la page de gestion des commandes."""
+    with open("templates/commandes.html") as f:
+        return f.read()
+
 @app.get("/api/jobs")
 async def get_jobs():
     """Renvoie la liste des commandes avec leurs tâches imbriquées."""
