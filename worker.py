@@ -6,24 +6,26 @@ import os
 from typing import Optional
 from database import DB_FILE, parse_config_json
 
-
-
 # Import de brother_ql pour la rasterisation (nécessite installation de brother_ql)
 try:
     import brother_ql
     from brother_ql.raster import BrotherQLRaster
     from brother_ql.backends.helpers import send
     from brother_ql.conversion import convert
-    print("brother_ql importé avec succès")
-    # Note: send n'est pas utilisé car on utilise notre propre driver bas niveau
+    import usb.core
+    import usb.util
+    print("brother_ql et pyusb importés avec succès")
+    # Note: send n'est PLUS utilisé - connexion USB directe pour le polling
 except ImportError as e:
-    print(f"Erreur: brother_ql n'est pas installé: {e}")
+    print(f"Erreur: brother_ql ou pyusb n'est pas installé: {e}")
     # Fallback ou simulation pour tests
     brother_ql = None
+    usb = None
 
 # Modèle QL-700 comme string (many examples use this)
 MODEL = 'QL-700'
-print(f"ModèleBrother QL-700: {MODEL}")
+CMD_STATUS = b'\x1B\x69\x53'  # Commande interrogation statut
+print(f"Modèle Brother QL-700: {MODEL}")
 
 # État global du worker
 paused = True  # True = actif, False = mis en pause
@@ -236,9 +238,9 @@ def _check_command_completion(cmd_id: int):
     conn.close()
 
 def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : imprime multiples copies de la même étiquette avec Brother_QL."""
-    if not brother_ql:
-        raise ImportError("brother_ql non disponible")
+    """Traite une tâche BATCH : imprime multiples copies de la même étiquette avec contrôle de flux strict."""
+    if not brother_ql or not usb:
+        raise ImportError("brother_ql ou pyusb non disponible")
 
     image_path = config.get('image_path')
     if not image_path:
@@ -247,82 +249,110 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"📁 [WORKER] Image path reçu: {image_path}")
     print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
 
-    # Configuration des options par défaut, ajustée pour gros transferts
-    options = {
-        'cut': config.get('cut', True),
-        'copies': 1,  # On gère les copies dans la boucle
-        'model': MODEL,
-        'label': str(config.get('label_type', '62')),
-        'rotate': '90',  # Toujours appliquer une rotation de 90° par défaut
-        'print_script': None,
-        # Options spéciales pour gros fichiers sombres
-        'compress': True,  # Activer la compression
-        'red': False,      # Désactiver traitement rouge pour simplifier
-        '600dpi': False,   # Utiliser 300dpi au lieu de 600dpi si possible
-    }
-
-    # Rasterise une seule fois
-    qlr = BrotherQLRaster(options['model'])
-    form = convert(qlr, [image_path], label=options['label'], rotate=options['rotate'], cut=options['cut'])
-
-    # Gestion des différentes versions de brother_ql API
-    if hasattr(form, 'render'):
-        binary_data = form.render(options['print_script'])
-    else:
-        binary_data = form
-
     # 🔥 RÉCUPÉRATION DE LA PROGRESSION SAUVEGARDÉE 🔥
-    qty_done = _get_task_progress(task_id)  # Au lieu de commencer à 0 !
+    qty_done = _get_task_progress(task_id)
     print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
 
-    for _ in range(qty_tot - qty_done):  # On termine seulement les impressions restantes !
-        print(f"Impression #{qty_done + 1}/{qty_tot} avec brother_ql...")
+    try:
+        # 1. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
+        qlr = BrotherQLRaster(MODEL)
+        instructions = convert(qlr, [image_path], '62', cut=True, dither=True, compress=True)
 
-        try:
-            # Utiliser seulement la méthode brother_ql.send()
-            send(
-                instructions=form,  # Données raster déjà préparées
-                printer_identifier="usb://04f9:2042",  # VID:PID de la QL-700
-                blocking=True  # Attendre la fin de l'impression
-            )
+        # 2. CONNEXION PERSISTANTE - Ouverte UNE FOIS au début
+        dev = usb.core.find(idVendor=0x04f9, idProduct=0x2042)
+        if not dev:
+            raise Exception("Imprimante Brother QL-700 introuvable - vérifier connexion USB")
 
-            # Délai fixe entre impressions (Brother_QL gère lui-même l'attente)
-            print(f"✅ Impression #{qty_done + 1} terminée avec succès via brother_ql")
+        # Setup USB standard pour Brother QL-700
+        dev.set_configuration()
+        usb.util.claim_interface(dev, 0)
+
+        # Récupérer les endpoints
+        cfg = dev.get_active_configuration()
+        intf = cfg[(0,0)]
+        ep_out = usb.util.find_descriptor(intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT)
+        ep_in = usb.util.find_descriptor(intf, custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
+
+        if not ep_out or not ep_in:
+            raise Exception("Endpoints USB introuvables pour Brother QL-700")
+
+        print(f"🔌 [WORKER] Connexion USB établie avec Brother QL-700 (VID:PID 04f9:2042)")
+
+        # 3. BOUCLE D'IMPRESSION AVEC POLLING DE SÉCURITÉ
+        for i in range(qty_done, qty_tot):
+            print(f"🖨️ Envoi étiquette #{i+1}/{qty_tot}...")
+
+            # A. ENVOI DES DONNÉES AVEC TIMEOUT LARGE (10s)
+            try:
+                dev.write(ep_out, instructions, timeout=10000)
+            except usb.core.USBError as usb_e:
+                error_str = str(usb_e)
+                if "Resource busy" in error_str or "16" in error_str:  # [Errno 16]
+                    print(f"🔒 Ressource USB occupée après {i} impressions - nouvel essai après délai...")
+                    time.sleep(2.0)
+                    try:
+                        dev.write(ep_out, instructions, timeout=10000)
+                        print(f"✅ Étiquette #{i+1} réussie au deuxième essai")
+                    except Exception:
+                        print(f"💥 Échec définitif de l'étiquette #{i+1}")
+                        _update_task_status(task_id, 'ERROR')
+                        _update_command_status(cmd_id, 'ERROR')
+                        return
+                else:
+                    raise usb_e
+
+            # B. PAUSE TECHNIQUE INITIALE (laisser le buffer se remplir)
+            time.sleep(0.5)
+
+            # C. POLLING DE SÉCURITÉ (CONTRÔLE DE FLUX STRICT)
+            while True:
+                try:
+                    # Envoyer commande statut
+                    dev.write(ep_out, CMD_STATUS, timeout=1000)
+
+                    # Lire 32 octets de réponse statut
+                    res = dev.read(ep_in, 32, timeout=1000)
+
+                    # Analyse des 3 drapeaux critiques selon protocole Brother
+                    is_busy = (res[18] & 0x01) != 0      # True si BUSY (bit 0 du byte 18 à 1)
+                    is_reception_phase = res[19] == 0x00 # True si PHASE RECEPTION (byte 19 = 0x00)
+                    is_cooling = (res[9] & 0x10) != 0    # True si REFROIDISSEMENT (bit 4 du byte 9 à 1)
+
+                    # CONDITION DE SORTIE = Prête SI ET SEULEMENT SI:
+                    # A. PAS BUSY: (res[18] & 0x01) == 0
+                    # B. PHASE RECEPTION: res[19] == 0x00
+                    # C. PAS SURCHAUFFE: (res[9] & 0x10) == 0
+                    printer_ready = (not is_busy) and is_reception_phase and (not is_cooling)
+
+                    if printer_ready:
+                        # 🎯 CONDITION DE SORTIE ATTEINTE
+                        print(f"✅ Étiquette #{i+1} Terminée - Imprimante prête (Idle + Reception + Froide)")
+                        break  # Sortie de boucle polling - voie libre pour suivante
+                    elif is_cooling:
+                        print(f"❄️ Mode Refroidissement actif - Attente 1.0s avant vérification...")
+                        time.sleep(1.0)
+                    else:
+                        print(f"⏳ Imprimante occupée (Busy:{is_busy}, Phase:{hex(res[19])}) - Attente 0.5s...")
+                        time.sleep(0.5)
+
+                except usb.core.USBError:
+                    print("⚠️ Timeout USB lors de polling - Retry après 1.0s...")
+                    time.sleep(1.0)  # Retry sur erreur USB
+
+            # D. MISE À JOUR BDD APRÈS CHAQUE ÉTIQUETTE
             qty_done += 1
             _update_task_progress(task_id, qty_done)
 
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Échec de l'impression #{qty_done + 1}: {error_msg}")
-
-            # Gestion simplifiée des erreurs (pas de récupération de connexion)
-            if "Resource busy" in error_msg or "[Errno 16]" in error_msg:
-                print(f"🔒 Ressource USB occupée pour {task_id} - nouvel essai après délai...")
-                time.sleep(2)  # Attente simple
-                try:
-                    send(
-                        instructions=form,
-                        printer_identifier="usb://04f9:2042",
-                        blocking=True
-                    )
-                    print(f"✅ Impression #{qty_done + 1} réussie au deuxième essai")
-                    qty_done += 1
-                    _update_task_progress(task_id, qty_done)
-                except Exception as retry_e:
-                    print(f"💥 Échec définitif: {retry_e}")
-                    _update_task_status(task_id, 'ERROR')
-                    _update_command_status(cmd_id, 'ERROR')
-                    return
-            else:
-                # Autre type d'erreur - marquer comme erreur immédiatement
-                print(f"Tâche {task_id} marquée en erreur")
-                _update_task_status(task_id, 'ERROR')
-                _update_command_status(cmd_id, 'ERROR')
-                return
-
-        # Délai entre impressions pour éviter surcharge (court délai avec Brother_QL)
-        if qty_done < qty_tot:
-            time.sleep(0.1)
+    except Exception as e:
+        print(f"❌ Erreur dans _process_batch_task: {e}")
+        _update_task_status(task_id, 'ERROR')
+        _update_command_status(cmd_id, 'ERROR')
+        raise  # Re-lançer pour trace complète
+    finally:
+        # NETTOYAGE CONNEXION PERSISTANTE
+        if 'dev' in locals():
+            usb.util.dispose_resources(dev)
+        print(f"🔌 [WORKER] Connexion USB fermée pour tâche {task_id}")
 
 def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : imprime une série d'images différentes avec Brother_QL."""
