@@ -275,19 +275,26 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-        # 2. DÉTECTION DE L'ORIENTATION ET CONFIGURATION DE LA ROTATION
-        rotation = '0'  # Pas de rotation par défaut
-        if detect_image_orientation:
-            orientation = detect_image_orientation(processed_image_path)
-            print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
-            if orientation == "portrait":
-                rotation = '90'  # Rotation uniquement pour les images portrait
-                print("🔄 Rotation 90° appliquée pour image portrait")
-            else:
-                rotation = '0'  # Pas de rotation pour les images paysage
-                print("📐 Image paysage - pas de rotation")
+        # 2. CONFIGURATION DE LA ROTATION (priorité au config explicite)
+        # Vérifier d'abord si une rotation explicite est demandée dans la config
+        config_rotation = config.get('rotate')
+        if config_rotation and config_rotation != 0:
+            rotation = str(config_rotation)  # Respect des paramètres explicites
+            print(f"⚙️ Rotation explicite {config_rotation}° depuis la config")
         else:
-            print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
+            # Sinon, appliquer la logique automatique basée sur l'orientation
+            rotation = '0'  # Pas de rotation par défaut
+            if detect_image_orientation:
+                orientation = detect_image_orientation(processed_image_path)
+                print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
+                if orientation == "portrait":
+                    rotation = '90'  # Rotation uniquement pour les images portrait
+                    print("🔄 Rotation automatique 90° appliquée pour image portrait")
+                else:
+                    rotation = '0'  # Pas de rotation pour les images paysage
+                    print("📐 Image paysage - pas de rotation automatique")
+            else:
+                print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
 
         # 3. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
         qlr = BrotherQLRaster(MODEL)
@@ -354,19 +361,26 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
             # 1. Pré-traitement de chaque image
             processed_image_path = _preprocess_image(img_path, task_id, config)
 
-            # 2. DÉTECTION DE L'ORIENTATION ET CONFIGURATION DE LA ROTATION
-            rotation = '0'  # Pas de rotation par défaut
-            if detect_image_orientation:
-                orientation = detect_image_orientation(processed_image_path)
-                print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
-                if orientation == "portrait":
-                    rotation = '90'  # Rotation uniquement pour les images portrait
-                    print("🔄 Rotation 90° appliquée pour image portrait")
-                else:
-                    rotation = '0'  # Pas de rotation pour les images paysage
-                    print("📐 Image paysage - pas de rotation")
+            # 2. CONFIGURATION DE LA ROTATION (priorité au config explicite)
+            # Vérifier d'abord si une rotation explicite est demandée dans la config
+            config_rotation = config.get('rotate')
+            if config_rotation and config_rotation != 0:
+                rotation = str(config_rotation)  # Respect des paramètres explicites
+                print(f"⚙️ Rotation explicite {config_rotation}° depuis la config")
             else:
-                print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
+                # Sinon, appliquer la logique automatique basée sur l'orientation
+                rotation = '0'  # Pas de rotation par défaut
+                if detect_image_orientation:
+                    orientation = detect_image_orientation(processed_image_path)
+                    print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
+                    if orientation == "portrait":
+                        rotation = '90'  # Rotation uniquement pour les images portrait
+                        print("🔄 Rotation automatique 90° appliquée pour image portrait")
+                    else:
+                        rotation = '0'  # Pas de rotation pour les images paysage
+                        print("📐 Image paysage - pas de rotation automatique")
+                else:
+                    print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
 
             # 3. Conversion de chaque image
             qlr = BrotherQLRaster(MODEL)
