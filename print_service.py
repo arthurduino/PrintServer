@@ -21,7 +21,7 @@ def detect_image_orientation(image_path):
 def print_batch_cups(image_paths, job_id):
     """
     Envoie une liste d'images à l'imprimante via CUPS.
-    Tourne automatiquement les images portrait à 90°.
+    Aucune rotation appliquée aux images (orientation d'origine conservée).
 
     Args:
         image_paths (list): Liste des chemins absolus des fichiers images (.png, .jpg).
@@ -61,13 +61,9 @@ def print_batch_cups(image_paths, job_id):
             # Copier les options de base
             img_options = options.copy()
 
-            # CORRECTION : ne tourner que les images portrait, laisser les paysages sans rotation
-            if orientation == "portrait":
-                img_options["orientation-requested"] = "4"  # 90° clockwise pour portraits
-                print(f"🔄 Rotation 90° appliquée UNIQUEMENT pour image portrait")
-            else:
-                img_options["orientation-requested"] = "1"  # Pas de rotation pour puypygases
-                print(f"📐 Image paysage - AUCUNE rotation appliquée")
+            # AUCUNE ROTATION appliquée à aucune image
+            img_options["orientation-requested"] = "1"  # Pas de rotation pour toutes les images
+            print(f"� Aucune rotation appliquée - orientation d'origine conservée")
 
             # Envoi à CUPS avec les options appropriées
             cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
