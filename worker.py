@@ -242,7 +242,8 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         print(f"📋 [CUPS] Préparation {qty_tot} étiquettes identiques pour tâche {task_id}")
 
         # 3. ENVOI À CUPS AVEC SUIVI DES JOBS CUPS
-        success = print_batch_cups_with_tracking(image_paths, f"TASK_{task_id}", task_id, qty_tot)
+        qty_done = _get_task_progress(task_id)  # Récupérer la progression actuelle
+        success = print_batch_cups_with_tracking(image_paths, f"TASK_{task_id}", task_id, qty_tot, qty_done)
         if success:
             print(f"✅ [CUPS] Tous les {qty_tot} étiquettes envoyées et confirmées terminées pour tâche {task_id}")
         else:
@@ -256,10 +257,11 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         traceback.print_exc()
         raise
 
-def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
+def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot, qty_done=0):
     """
     Envoie un batch d'images à CUPS et attend la fin réelle de chaque impression.
     Met à jour la progression en temps réel basé sur les jobs CUPS terminés.
+    qty_done permet de reprendre une tâche déjà commencée.
     """
     try:
         import cups
@@ -277,7 +279,7 @@ def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
         return False
 
     print(f"🚀 Début du job suivi {job_id} via CUPS ({len(image_paths)} étiquettes)")
-    print(f"📊 [TRACKING] Suivi en temps réel pour tâche {task_id}")
+    print(f"📊 [TRACKING] Déjà {qty_done} fait(s), suivi en temps réel pour tâche {task_id}")
 
     # Configuration des options d'impression Brother
     options = {
@@ -289,8 +291,11 @@ def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
 
     cups_job_ids = []  # Liste des job IDs CUPS créés
 
-    # 1. ENVOI DE TOUS LES FICHIERS À CUPS
-    for index, img_path in enumerate(image_paths):
+    # 1. ENVOI DE TOUS LES FICHIERS À CUPS (seulement ceux pas encore faits)
+    images_remaining = qty_tot - qty_done
+    print(f"📋 [BATCH] Envoi de {images_remaining} étiquettes restantes ({qty_done} déjà faites)")
+
+    for index, img_path in enumerate(image_paths[:images_remaining]):
         if not os.path.exists(img_path):
             print(f"⚠️ Fichier manquant : {img_path}")
             continue
@@ -302,7 +307,7 @@ def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
             # Envoi à CUPS avec les options appropriées
             cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
             cups_job_ids.append(cups_job_id)
-            print(f"✅ Étiquette {index+1}/{len(image_paths)} envoyé (ID CUPS: {cups_job_id})")
+            print(f"✅ Étiquette {index+1}/{images_remaining} envoyé (ID CUPS: {cups_job_id})")
 
             time.sleep(0.1)  # Petit délai pour éviter la surcharge
 
@@ -310,16 +315,20 @@ def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
             print(f"❌ Erreur CUPS sur l'image {img_path}: {e}")
             return False
 
-    print(f"📋 Tous les {len(cups_job_ids)} fichiers transmis au spooler système")
+    if not cups_job_ids:
+        print(f"⚠️ [TRACKING] Aucune nouvelle étiquette à envoyer - déjà {qty_done}/{qty_tot} fait(es)")
+        return True  # Rien à faire, considérer succès
+
+    print(f"📋 Tous les {len(cups_job_ids)} nouveaux fichiers transmis au spooler système")
     print(f"⏳ [TRACKING] Attente de la fin réelle des impressions...")
 
     # 2. SUIVI DES JOBS CUPS EN TEMPS RÉEL
-    completed_count = 0
+    completed_count = qty_done  # Commencer avec la quantité déjà faite
     pending_jobs = cups_job_ids.copy()  # Copie pour éviter les problèmes de modification pendant l'itération
     max_wait_time = 300  # 5 minutes timeout maximum
     start_time = time.time()
 
-    while completed_count < len(cups_job_ids) and (time.time() - start_time) < max_wait_time:
+    while completed_count < qty_tot and (time.time() - start_time) < max_wait_time:
         try:
             # Récupération de l'état de tous les jobs CUPS
             jobs_status = conn.getJobs(which_jobs='all', requested_attributes=['id', 'job-state'])
@@ -335,15 +344,16 @@ def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot):
                         completed_count += 1
                         jobs_to_remove.append(job_id)
                         print(f"📊 [TRACKING] Job CUPS {job_id} terminé (état: {state})")
+                        print(f"📊 [TRACKING] Progression cumulée: {completed_count}/{qty_tot} étiquettes terminées")
 
             # Retirer les jobs terminés
             for job_id in jobs_to_remove:
                 pending_jobs.remove(job_id)
 
             # MISE À JOUR RÉELLE DE LA PROGRESSION si il y a du nouveau
-            if jobs_to_remove:
+            if jobs_to_remove and completed_count > qty_done:
                 _update_task_progress(task_id, completed_count)
-                print(f"📊 [TRACKING] Progression mise à jour: {completed_count}/{qty_tot} étiquettes terminées")
+                print(f"📊 [TRACKING] Base mise à jour: {completed_count}/{qty_tot} étiquettes terminées")
 
             if completed_count >= qty_tot:
                 print(f"✅ [TRACKING] Toutes les {qty_tot} étiquettes confirmées terminées!")
