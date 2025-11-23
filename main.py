@@ -53,7 +53,7 @@ async def startup_event():
 
         run_worker()
         worker_running = True
-        print("Worker démarré avec Brother_QL.")
+        print("Worker démarré avec CUPS.")
     except Exception as e:
         print(f"Erreur lors de l'initialisation: {e}")
         worker_running = False
@@ -307,15 +307,15 @@ async def resume_worker():
 
 @app.get("/api/printer/status")
 async def get_printer_status():
-    """Renvoie l'état simplifié de l'imprimante (Brother_QL ne fournit pas de monitoring avancé)."""
-    # Avec Brother_QL, nous n'avons pas de monitoring avancé du statut
+    """Renvoie l'état simplifié de l'imprimante via CUPS."""
+    # Avec CUPS, le spooler système gère tout
     # Retourner un statut générique basé sur l'état du worker
     if worker_running:
         return {
             "status": "Ready",
-            "detail": "Imprimante Brother QL prête - monitoring avancé non disponible avec Brother_QL",
+            "detail": "Imprimante Brother QL prête via CUPS - spooler système actif",
             "is_error": False,
-            "note": "Utilisation de Brother_QL - fonctionnalités avancées de monitoring non supportées"
+            "note": "Utilisation de CUPS - gestion automatique de la file d'attente et du refroidissement"
         }
     else:
         return {

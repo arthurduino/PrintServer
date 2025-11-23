@@ -6,32 +6,13 @@ import os
 from typing import Optional
 from database import DB_FILE, parse_config_json
 
-# Import de brother_ql pour la rasterisation (nécessite installation de brother_ql)
+# Import du nouveau service d'impression CUPS
 try:
-    import brother_ql
-    from brother_ql.raster import BrotherQLRaster
-    from brother_ql.backends.helpers import send
-    from brother_ql.conversion import convert
-    print("brother_ql importé avec succès")
+    from print_service import print_batch_cups
+    print("✅ Service CUPS importé avec succès")
 except ImportError as e:
-    print(f"Erreur: brother_ql n'est pas installé: {e}")
-    brother_ql = None
-
-# Import de la nouvelle architecture asynchrone
-try:
-    from printer_driver import (
-        start_async_printer,
-        stop_async_printer,
-        add_print_job,
-        printer_state
-    )
-    print("✅ Architecture asynchrone importée")
-except ImportError as e:
-    print(f"❌ Erreur importation architecture asynchrone: {e}")
-    start_async_printer = None
-    stop_async_printer = None
-    add_print_job = None
-    printer_state = None
+    print(f"❌ Erreur importation service CUPS: {e}")
+    print_batch_cups = None
 
 # Modèle QL-700 comme string
 MODEL = 'QL-700'
@@ -41,20 +22,15 @@ print(f"Modèle Brother QL-700: {MODEL}")
 paused = True  # True = actif, False = mis en pause
 
 def run_worker():
-    """Lance le worker en daemon thread et démarre l'architecture asynchrone."""
+    """Lance le worker en daemon thread pour traiter les tâches d'impression via CUPS."""
     # RÉCUPÉRATION APRÈS REDÉMARRAGE : remettre les tâches IN_PROGRESS orphelines en PENDING
     _recover_orphaned_tasks_on_startup()
 
-    # ✅ DÉMARRER L'ARCHITECTURE ASYNCHRONE (remplace polling direct)
-    if start_async_printer:
-        start_async_printer()
-        print("✅ Architecture asynchrone Brother QL-700 démarrée")
-    else:
-        print("❌ Impossible de démarrer l'architecture asynchrone")
+    print("✅ Architecture CUPS - plus de gestion manuelle du refroidissement")
 
     thread = threading.Thread(target=_worker_loop, daemon=True)
     thread.start()
-    print("Worker démarré en thread daemon avec architecture asynchrone - récupération d'état activée.")
+    print("Worker démarré en thread daemon avec CUPS - récupération d'état activée.")
 
 def _worker_loop():
     """Boucle principale du worker pour traiter les tâches avec Brother_QL uniquement."""
@@ -242,9 +218,9 @@ def _check_command_completion(cmd_id: int):
     conn.close()
 
 def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : ajoute les étiquettes à imprimer dans la file asynchrone."""
-    if not brother_ql or not add_print_job:
-        raise ImportError("brother_ql ou architecture asynchrone non disponible")
+    """Traite une tâche BATCH : envoie les étiquettes à CUPS pour impression."""
+    if not print_batch_cups:
+        raise ImportError("Service CUPS non disponible")
 
     image_path = config.get('image_path')
     if not image_path:
@@ -253,44 +229,24 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"📁 [WORKER] Image path reçu: {image_path}")
     print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
 
-    # Récupération des paramètres d'optimisation (valeurs par défaut sécurisées)
-    label_type = str(config.get('label_type', '62'))
-    dpi = config.get('dpi', 300)
-    print(f"⚙️ [CONFIG] dpi={dpi}, label='{label_type}'")
-
-    # 🔥 RÉCUPÉRATION DE LA PROGRESSION SAUVEGARDÉE 🔥
-    qty_done = _get_task_progress(task_id)
-    print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
-
     try:
         # 1. PRÉ-TRAITEMENT DE L'IMAGE (Redimensionnement automatique)
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-        # 2. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
-        qlr = BrotherQLRaster(MODEL)
-        instructions = convert(
-            qlr, [processed_image_path], label_type,
-            cut=True, dither=True, compress=False,
-            rotate='90', red=False, dpi_600=(dpi==600)
-        )
+        # 2. CRÉATION DE LA LISTE DES FICHIERS À IMPRIMER
+        # CUPS gère maintenant la file d'attente et le spooler
+        image_paths = [processed_image_path] * qty_tot  # qty_tot copies du même fichier
+        print(f"📋 [CUPS] Préparation {qty_tot} étiquettes identiques pour tâche {task_id}")
 
-        # 3. AJOUT DES TÂCHES D'IMPRESSION À LA FILE ASYNCHRONE
-        # (l'architecture asynchrone gère automatiquement les pauses de refroidissement)
-        total_jobs_added = 0
-
-        for i in range(qty_done, qty_tot):
-            label_num = i + 1
-            print(f"📋 [ASYNC] Ajout étiquette #{label_num}/{qty_tot} à la file (tâche {task_id})")
-
-            # Ajouter à la file d'attente asynchrone
-            add_print_job(instructions, label_num, task_id)
-            total_jobs_added += 1
-
-            # Mise à jour immédiate de la progression en base
-            _update_task_progress(task_id, label_num)
-
-        print(f"✅ [ASYNC] {total_jobs_added} étiquettes ajoutées à la file pour tâche {task_id}")
+        # 3. ENVOI À CUPS (le spooler système gère désormais tout)
+        success = print_batch_cups(image_paths, f"TASK_{task_id}")
+        if success:
+            # Mise à jour de la progression - tout envoyé d'un coup
+            _update_task_progress(task_id, qty_tot)
+            print(f"✅ [CUPS] {qty_tot} étiquettes envoyées au spooler CUPS pour tâche {task_id}")
+        else:
+            raise Exception("Échec d'envoi à CUPS")
 
     except Exception as e:
         print(f"❌ Erreur dans _process_batch_task (tâche {task_id}): {e}")
@@ -301,53 +257,33 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         raise
 
 def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche SERIES : ajoute les étiquettes à imprimer dans la file asynchrone."""
-    if not brother_ql or not add_print_job:
-        raise ImportError("brother_ql ou architecture asynchrone non disponible")
+    """Traite une tâche SERIES : envoie les étiquettes à CUPS pour impression."""
+    if not print_batch_cups:
+        raise ImportError("Service CUPS non disponible")
 
     images = config.get('images', [])
     if not images:
         raise ValueError("Config SERIES manquante: images (liste de chemins)")
 
-    # Récupération des paramètres d'optimisation (valeurs par défaut sécurisées)
-    label_type = str(config.get('label_type', '62'))
-    dpi = config.get('dpi', 300)
-    cut = config.get('cut', True)
-    print(f"⚙️ [CONFIG-SERIES] dpi={dpi}, label='{label_type}'")
-
-    # 🔥 RÉCUPÉRATION DE LA PROGRESSION SAUVEGARDÉE 🔥
-    qty_done = _get_task_progress(task_id)
-    print(f"🔥 [RECOVERY] Reprise tâche SÉRIE {task_id} depuis image #{qty_done + 1}")
-
-    # On ne traite que les images restantes
-    images_to_print = images[qty_done:]
+    print(f"⚙️ [CONFIG-SERIES] {len(images)} images à traiter")
 
     try:
-        total_jobs_added = 0
+        # PRÉ-TRAITEMENT DE TOUTES LES IMAGES
+        processed_image_paths = []
+        for img_path in images:
+            processed_path = _preprocess_image(img_path, task_id, config)
+            processed_image_paths.append(processed_path)
 
-        for i, img_path in enumerate(images_to_print):
-            current_label_num = qty_done + i + 1
-            print(f"📋 [ASYNC] Traitement image #{current_label_num}/{qty_tot}: {os.path.basename(img_path)}")
+        print(f"🔧 [WORKER] {len(processed_image_paths)} images pré-traitées pour tâche série {task_id}")
 
-            # 1. Pré-traitement de chaque image
-            processed_image_path = _preprocess_image(img_path, task_id, config)
-
-            # 2. Conversion de chaque image
-            qlr = BrotherQLRaster(MODEL)
-            instructions = convert(
-                qlr, [processed_image_path], label_type,
-                cut=cut, dither=True, compress=False,
-                rotate='90', red=False, dpi_600=(dpi==600)
-            )
-
-            # 3. Ajouter à la file d'attente asynchrone
-            add_print_job(instructions, current_label_num, task_id)
-            total_jobs_added += 1
-
-            # Mise à jour de la progression
-            _update_task_progress(task_id, current_label_num)
-
-        print(f"✅ [ASYNC] {total_jobs_added} images ajoutées à la file pour tâche série {task_id}")
+        # ENVOI À CUPS - toutes les images d'un coup
+        success = print_batch_cups(processed_image_paths, f"TASK_{task_id}")
+        if success:
+            # Mise à jour de la progression - tout envoyé d'un coup
+            _update_task_progress(task_id, qty_tot)
+            print(f"✅ [CUPS] {qty_tot} étiquettes de série envoyées au spooler CUPS pour tâche {task_id}")
+        else:
+            raise Exception("Échec d'envoi à CUPS")
 
     except Exception as e:
         print(f"❌ Erreur dans _process_series_task (tâche {task_id}): {e}")
