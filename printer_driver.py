@@ -5,9 +5,9 @@ import time
 from queue import Queue, Empty
 import struct
 
-# Constantes USB Brother QL-700
-VENDOR_ID = 0x04b8  # Brother Industries
-PRODUCT_ID = 0x0041  # QL-700
+# CORRECTIFS BROTHER QL-700
+ID_VENDOR = 0x04f9   # Brother Industries, Ltd
+ID_PRODUCT = 0x2042  # QL-700 Label Printer
 
 # États globaux thread-safe (mémoire partagée)
 printer_state = {
