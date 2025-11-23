@@ -317,47 +317,11 @@ def stop_async_printer():
 
 def create_ql_print_commands(instructions, model='QL-700', label_type=62):
     """
-    Encapsule les instructions brother_ql avec les commandes Brother QL nécessaires.
-
-    Selon Brother QL Series Command Reference, séquence complète :
-    1. ESC @ (initialize)
-    2. ESC i a <mode> (mode selection)
-    3. ESC i A <params> (extended mode/settings)
-    4. Données raster
-    5. ESC i z (print)
+    brother_ql.convert() génère déjà toutes les commandes nécessaires.
+    On retourne simplement les instructions telles quelles.
     """
-    commands = []
-
-    # 1. Initialize printer - ESC @
-    commands.append(bytes([0x1B, 0x40]))
-    print(f"📋 [QL_CMD] Initialize printer: ESC @")
-
-    # 2. Mode selection - ESC i a <mode>
-    # Mode 1 = Auto cut, 0 = No cut
-    mode = 0x01 if True else 0x00  # cut=True pour l'instant
-    commands.append(bytes([0x1B, 0x69, 0x61, mode]))
-    print(f"📋 [QL_CMD] Mode selection: ESC i a {mode}")
-
-    # 3. Extended mode settings - ESC i A <params>
-    # Paramètres étendus : compression, rotation, etc.
-    compression = 0x00  # No compression
-    rotation = 0x00     # No rotation (brother_ql gère déjà)
-    commands.append(bytes([0x1B, 0x69, 0x41, compression, rotation]))
-    print(f"📋 [QL_CMD] Extended settings: compression={compression}, rotation={rotation}")
-
-    # 4. Status information request (pour vérification) - ESC i S
-    commands.append(bytes([0x1B, 0x69, 0x53]))
-    print(f"📋 [QL_CMD] Status request: ESC i S")
-
-    # 5. Données raster (depuis brother_ql.convert)
-    print(f"📋 [QL_CMD] Données raster: {len(list(instructions))} packets")
-    commands.extend(instructions)
-
-    # 6. Print command - ESC i z
-    commands.append(bytes([0x1B, 0x69, 0x7A]))
-    print(f"📋 [QL_CMD] Print command: ESC i z")
-
-    return commands
+    print(f"📋 [QL_CMD] Utilisation directe brother_ql: {len(list(instructions))} packets")
+    return instructions
 
 def add_print_job(instructions, label_num, task_id):
     """Ajoute une tâche d'impression à la file d'attente asynchrone."""
@@ -367,4 +331,4 @@ def add_print_job(instructions, label_num, task_id):
     job = (complete_commands, label_num, task_id)
     printer_state['job_queue'].put(job)
     print(f"📋 [ASYNC] Job ajouté à la file: tâche {task_id}, étiquette #{label_num} ({len(complete_commands)} commandes)")
-    print(f"📊 [ASYNC] File d'attente: {printer_state['job_queue'].qsize()} jobs")
+    print(f"� [ASYNC] File d'attente: {printer_state['job_queue'].qsize()} jobs")
