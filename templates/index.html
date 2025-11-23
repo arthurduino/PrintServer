@@ -30,6 +30,7 @@
                     <div id="printer-status">Chargement...</div>
                 </div>
                 <div class="status-right">
+                    <button id="test-api-btn" class="btn btn-primary" style="margin-right: 10px;">Test API</button>
                     <button id="pause-btn" class="btn btn-secondary">Pause</button>
                     <button id="resume-btn" class="btn btn-primary">Resume</button>
                 </div>
@@ -49,6 +50,17 @@
             <h2>File d'attente</h2>
             <div id="job-list" class="queue-list">
                 <p>File vide</p>
+            </div>
+        </div>
+
+        <!-- Debug Section -->
+        <div class="section debug-section">
+            <h2>Debug Informations</h2>
+            <div id="debug-info" style="font-family: monospace; font-size: 0.8em; background: #f8f9fa; padding: 10px; border-radius: 5px; border: 1px solid #dee2e6;">
+                <div><strong>🔍 Chargement des infos de debug...</strong></div>
+                <div id="debug-jobs-count">Jobs en base: -</div>
+                <div id="debug-worker-status">Worker: -</div>
+                <div id="debug-last-update">Dernière mise à jour: -</div>
             </div>
         </div>
     </div>

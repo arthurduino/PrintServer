@@ -10,7 +10,8 @@ from database import (
     init_db, add_missing_columns_if_needed, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
 )
-# Architecture CUPS uniquement - Migration complète depuis brother_ql directe
+# Architecture CUPS uniquement - Migration complète terminée ✅
+# worker.py utilise print_service.py qui gère CUPS nativement
 from worker import run_worker
 
 app = FastAPI(title="Print Server API")
@@ -308,21 +309,172 @@ async def resume_worker():
 
 @app.get("/api/printer/status")
 async def get_printer_status():
-    """Renvoie l'état simplifié de l'imprimante via CUPS."""
-    # Avec CUPS, le spooler système gère tout
-    # Retourner un statut générique basé sur l'état du worker
-    if worker_running:
-        return {
-            "status": "Ready",
-            "detail": "Imprimante Brother QL prête via CUPS - spooler système actif",
-            "is_error": False,
-            "note": "Utilisation de CUPS - gestion automatique de la file d'attente et du refroidissement"
+    """Renvoie l'état réel de l'imprimante CUPS."""
+    try:
+        import cups
+        conn = cups.Connection()
+
+        # Récupération des informations CUPS réelles
+        printers = conn.getPrinters()
+
+        if print_service.PRINTER_NAME not in printers:
+            return {
+                "status": "Disconnected",
+                "detail": f"Imprimante '{print_service.PRINTER_NAME}' non trouvée dans CUPS",
+                "is_error": True,
+                "state": "printer-not-found"
+            }
+
+        printer_info = printers[print_service.PRINTER_NAME]
+
+        # Récupération des attributs détaillés
+        printer_attributes = conn.getPrinterAttributes(print_service.PRINTER_NAME)
+
+        # État réel de l'imprimante selon CUPS
+        printer_state = printer_attributes.get('printer-state', 3)  # 3 = idle, 4 = printing, 5 = stopped
+
+        # Nombre de jobs dans la file
+        all_jobs = conn.getJobs(which_jobs='all', my_jobs=False, requested_attributes=['id', 'job-state'])
+        printer_jobs = [job for job in all_jobs.values() if all_jobs[job]['job-printer-name'] == print_service.PRINTER_NAME]
+        active_jobs = [job for job in printer_jobs if all_jobs[job]['job-state'] in [3, 4, 5]]  # pending/processing/held
+
+        # Traduction des états CUPS
+        status_map = {
+            3: "Ready",       # idle
+            4: "Busy",        # printing
+            5: "Stopped",     # stopped
+            6: "Error"        # processing stopped
         }
-    else:
+
+        status = status_map.get(printer_state, "Unknown")
+        is_error = printer_state in [5, 6, 7]  # stopped/error states
+
+        # Message détaillé
+        detail_map = {
+            3: f"Imprimante prête - {len(active_jobs)} job(s) en attente/activité" if active_jobs else "Imprimante prête",
+            4: f"Impression en cours ({len(active_jobs)} job(s) actif(s))",
+            5: "Imprimante arrêtée",
+            6: "Erreur d'impression"
+        }
+
+        detail = detail_map.get(printer_state, f"État CUPS: {printer_state}")
+
+        return {
+            "status": status,
+            "detail": detail,
+            "is_error": is_error,
+            "state": "ready" if printer_state == 3 else ("busy" if printer_state == 4 else "error"),
+            "cups_state": printer_state,
+            "queued_jobs": len(active_jobs),
+            "total_jobs": len(printer_jobs),
+            "printer_info": {
+                "name": print_service.PRINTER_NAME,
+                "cups_uri": printer_info.get('printer-info', 'N/A'),
+                "location": printer_attributes.get('printer-location', ''),
+                "description": printer_attributes.get('printer-info', '')
+            }
+        }
+
+    except cups.IPPError as e:
         return {
             "status": "Error",
-            "detail": "Worker non initialisé",
-            "is_error": True
+            "detail": f"Erreur CUPS IPP: {e}",
+            "is_error": True,
+            "state": "cups-error"
+        }
+
+    except ImportError:
+        return {
+            "status": "Error",
+            "detail": "Module pycups non installé",
+            "is_error": True,
+            "state": "cups-missing"
+        }
+
+    except Exception as e:
+        return {
+            "status": "Error",
+            "detail": f"Erreur imprévue: {str(e)}",
+            "is_error": True,
+            "state": "unknown-error"
+        }
+
+@app.get("/api/cups/jobs")
+async def get_cups_jobs():
+    """Renvoie l'état réel des jobs CUPS pour cette imprimante."""
+    try:
+        import cups
+        conn = cups.Connection()
+
+        # Récupération de tous les jobs CUPS avec détails
+        jobs = conn.getJobs(which_jobs='all', requested_attributes=[
+            'job-id', 'job-name', 'job-state', 'job-state-reasons',
+            'job-printer-name', 'job-originating-user-name', 'time-at-creation',
+            'time-at-processing', 'time-at-completed', 'job-media-progress',
+            'job-impressions', 'job-impressions-completed'
+        ])
+
+        # Filtrer seulement les jobs pour notre imprimante
+        printer_jobs = {}
+        for job_id, job_info in jobs.items():
+            if job_info.get('job-printer-name') == print_service.PRINTER_NAME:
+                printer_jobs[job_id] = job_info
+
+        # Traduire les états CUPS en texte
+        state_map = {
+            3: "pending",
+            4: "printing",
+            5: "held",
+            6: "processing-stopped",
+            7: "canceled",
+            8: "aborted",
+            9: "completed"
+        }
+
+        # Convertir en format exploitable par le frontend
+        formatted_jobs = []
+        for job_id, job_info in printer_jobs.items():
+            formatted_jobs.append({
+                "id": job_id,
+                "name": job_info.get('job-name', 'Unknown'),
+                "state": state_map.get(job_info.get('job-state', 0), "unknown"),
+                "state_code": job_info.get('job-state', 0),
+                "state_reasons": job_info.get('job-state-reasons', []),
+                "user": job_info.get('job-originating-user-name', 'Unknown'),
+                "created_at": job_info.get('time-at-creation', 0),
+                "processing_at": job_info.get('time-at-processing', 0),
+                "completed_at": job_info.get('time-at-completed', 0),
+                "progress": job_info.get('job-media-progress', 0),
+                "total_pages": job_info.get('job-impressions', 0),
+                "completed_pages": job_info.get('job-impressions-completed', 0)
+            })
+
+        return {
+            "success": True,
+            "printer_name": print_service.PRINTER_NAME,
+            "total_jobs": len(formatted_jobs),
+            "jobs": formatted_jobs
+        }
+
+    except cups.IPPError as e:
+        return {
+            "success": False,
+            "error": f"Erreur CUPS IPP: {e}",
+            "jobs": []
+        }
+
+    except ImportError:
+        return {
+            "success": False,
+            "error": "Module pycups non installé",
+            "jobs": []
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Erreur imprévue: {str(e)}",
+            "jobs": []
         }
 
 # API Routes pour les produits (autocollants enregistrés)
