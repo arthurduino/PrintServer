@@ -6,20 +6,12 @@ import os
 from typing import Optional
 from database import DB_FILE, parse_config_json
 
-# Import de la nouvelle classe de suivi CUPS précis
-try:
-    from cups_batch_printer import CupsBatchPrinter
-    print("✅ Classe CupsBatchPrinter importée avec succès")
-except ImportError as e:
-    print(f"❌ Erreur importation CupsBatchPrinter: {e}")
-    CupsBatchPrinter = None
-
-# Import du service CUPS existant (pour compatibilité)
+# Import du nouveau service d'impression CUPS
 try:
     from print_service import print_batch_cups
-    print("✅ Service CUPS existant importé avec succès")
+    print("✅ Service CUPS importé avec succès")
 except ImportError as e:
-    print(f"⚠️ Service CUPS existant non disponible: {e}")
+    print(f"❌ Erreur importation service CUPS: {e}")
     print_batch_cups = None
 
 # Modèle QL-700 comme string
@@ -225,64 +217,10 @@ def _check_command_completion(cmd_id: int):
         conn.commit()
     conn.close()
 
-def _track_progress_with_db_updates(job_ids, task_id, qty_tot, qty_done=0):
-    """
-    Fonction adaptée de CupsBatchPrinter.track_progress() qui met aussi à jour la DB en temps réel.
-    """
-    if not CupsBatchPrinter:
-        raise ImportError("CupsBatchPrinter non disponible")
-
-    # Utiliser une instance de CupsBatchPrinter pour accéder à la connexion CUPS
-    printer = CupsBatchPrinter()
-    conn = printer.conn
-
-    total = len(job_ids)
-    pending_ids = set(job_ids)
-
-    print("⏳ Démarrage du suivi d'impression avec mise à jour DB temps réel...")
-
-    # Variable globale pour suivre la progression
-    current_progress = qty_done
-
-    while pending_ids:
-        # Récupère tous les jobs actifs (Processing ou Pending)
-        current_jobs = conn.getJobs(my_jobs=True, which_jobs='not-completed')
-
-        # Les jobs encore dans 'current_jobs' ne sont pas finis
-        active_ids = set(current_jobs.keys())
-
-        # Intersection : Quels sont NOS jobs qui sont encore actifs ?
-        still_running = pending_ids.intersection(active_ids)
-
-        # Ceux qui ne sont plus actifs sont finis
-        finished_count = total - len(still_running)
-        actual_progress = qty_done + finished_count
-
-        # Calcul du pourcentage pour affichage
-        percent = (actual_progress / qty_tot) * 100
-
-        # Affichage (ou mise à jour via WebSocket pour votre interface Web)
-        print(f"🔄 Progression : {actual_progress}/{qty_tot} ({percent:.1f}%) - En cours: {list(still_running)[:3]}...", end="\r")
-
-        # MISE À JOUR DE LA BASE DE DONNÉES si la progression a changé
-        if actual_progress > current_progress:
-            current_progress = actual_progress
-            _update_task_progress(task_id, current_progress)
-            print(f"\n📊 [DB] Progression mise à jour: {current_progress}/{qty_tot} étiquettes")
-
-        # Si tout est fini, on sort
-        if not still_running:
-            break
-
-        time.sleep(1)  # Pause pour ne pas spammer CUPS
-
-    print(f"\n✅ Impression terminée ! ({qty_tot} étiquettes)")
-    return True
-
 def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : utilise CupsBatchPrinter pour suivi précis de chaque job CUPS."""
-    if not CupsBatchPrinter:
-        raise ImportError("CupsBatchPrinter non disponible")
+    """Traite une tâche BATCH : envoie les étiquettes à CUPS et suit leur progression réelle."""
+    if not print_batch_cups:
+        raise ImportError("Service CUPS non disponible")
 
     image_path = config.get('image_path')
     if not image_path:
@@ -292,36 +230,25 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
 
     try:
+        from print_service import PRINTER_NAME
+        import cups
+
         # 1. PRÉ-TRAITEMENT DE L'IMAGE (Redimensionnement automatique)
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-        # 2. CRÉATION DE LA LISTE DES FICHIERS À IMPRIMER
+    # 2. CRÉATION DE LA LISTE DES FICHIERS À IMPRIMER
         image_paths = [processed_image_path] * qty_tot  # qty_tot copies du même fichier
         print(f"📋 [CUPS] Préparation {qty_tot} étiquettes identiques pour tâche {task_id}")
 
-        # 3. UTILISATION DE CUPS_BATCH_PRINTER POUR SUIVI PRÉCIS
-        printer = CupsBatchPrinter()
-
-        # 3a. ENVOI DES ÉTIQUETTES À CUPS (récupération des job IDs)
-        job_ids = printer.send_batch(image_paths, f"TASK_{task_id}")
-        if not job_ids or len(job_ids) != qty_tot:
-            raise Exception(f"Échec envoi à CUPS: {len(job_ids) if job_ids else 0}/{qty_tot} jobs créés")
-
-        print(f"📋 [CUPS] {len(job_ids)} jobs CUPS créés pour tâche {task_id}")
-
-        # 3b. SUIVI PRÉCIS DE CHAQUE JOB AVEC MISE À JOUR DB TEMPS RÉEL
+        # 3. ENVOI À CUPS AVEC SUIVI DES JOBS INDIVIDUELS (page par page)
         qty_done = _get_task_progress(task_id)  # Récupérer la progression actuelle
-        print(f"📊 [PROGRESS] Suivi précis : {qty_done}/{qty_tot} étiquettes déjà faites")
-
-        success = _track_progress_with_db_updates(job_ids, task_id, qty_tot, qty_done)
-
+        print(f"📊 [PROGRESS] Déjà {qty_done}/{qty_tot} fait(s) pour tâche {task_id}")
+        success = print_batch_individual_jobs(image_paths, f"TASK_{task_id}", task_id, qty_tot, qty_done)
         if success:
-            # Vérifier que toute la progression est bien enregistrée
-            final_progress = _get_task_progress(task_id)
-            print(f"✅ [CUPS] Tâche {task_id} terminée: {final_progress}/{qty_tot} étiquettes confirmées")
+            print(f"✅ [CUPS] Tous les {qty_tot} étiquettes envoyées et confirmées terminées pour tâche {task_id}")
         else:
-            raise Exception("Échec du suivi CUPS")
+            raise Exception("Échec d'envoi à CUPS")
 
     except Exception as e:
         print(f"❌ Erreur dans _process_batch_task (tâche {task_id}): {e}")
