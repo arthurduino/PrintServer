@@ -122,10 +122,21 @@ class PrinterDriver:
 
 def listener_thread():
     """Thread Listener : lit passivement l'Endpoint IN pour détecter le refroidissement."""
+    print("🐛 [LISTENER] DEBUG: Listener DÉMARRÉ - vérification connexion")
+
     shared_driver = printer_state.get('shared_driver')
     if not shared_driver:
-        print("❌ [LISTENER] Connexion USB partagée non disponible")
+        print("❌ [LISTENER] DEBUG: Connexion USB partagée non disponible")
         return
+
+    # VÉRIFICATION ENDPOINT - Point critique identifié
+    if not hasattr(shared_driver, 'ep_in') or not shared_driver.ep_in:
+        print("❌ [LISTENER] DEBUG: Endpoint IN non valide - CRASH IMMÉDIAT")
+        raise ValueError("Endpoint IN manquant pour le Listener")
+
+    print(f"🐛 [LISTENER] DEBUG: Endpoint IN valide: 0x{shared_driver.ep_in.bEndpointAddress:02X}")
+
+    print("👂 [LISTENER] Thread d'écoute démarré (avec debug forcé)")
 
     # Envoi d'une seule commande de statut au démarrage (pas de polling actif)
     try:
@@ -137,18 +148,22 @@ def listener_thread():
         print(f"❌ [LISTENER] Erreur envoi commande statut initiale: {e}")
         return
 
-    print("👂 [LISTENER] Thread d'écoute démarré (connexion partagée)")
-
+    iteration_count = 0
     while printer_state['running']:
+        iteration_count += 1
         try:
-            # Lecture passive de 32 octets (Status Information) avec lock
+            # Lecture passive de 32 octets (Status Information) avec lock et TIMEOUT
             with printer_state['driver_lock']:
-                status_packet = shared_driver.read_response(size=32, timeout=1000)
+                print(f"🐛 [LISTENER] DEBUG: Iteration #{iteration_count} - Lecture avec timeout...")
+                status_packet = shared_driver.read_response(size=32, timeout=1000)  # TIMEOUT OBLIGATOIRE
+                print(f"📥 [LISTENER] DEBUG: Données reçues: {len(status_packet)} octets")
 
             if len(status_packet) == 32:
+                print(f"📦 [LISTENER] DEBUG: Paquet valide 32 octets - Analyse...")
                 # Analyse des bytes 18 et 22 pour détecter le refroidissement
                 byte_18 = status_packet[18]
                 byte_22 = status_packet[22]
+                print(f"📊 [LISTENER] DEBUG: Bytes [18,22] = [{byte_18:02X}, {byte_22:02X}]")
 
                 # Logique de détection de refroidissement selon la doc Brother
                 if byte_18 == 0x05 and byte_22 == 0x03:
@@ -159,25 +174,25 @@ def listener_thread():
                     # REPRISE : Refroidissement terminé
                     printer_state['cooling'] = False
                     print("🔥 [LISTENER] Refroidissement terminé - Writer relancé")
-
+                else:
+                    print("ℹ️ [LISTENER] DEBUG: Status normal, pas de refroidissement")
             else:
-                # Paquet de taille inattendue - probablement "0 packet" pendant refroidissement
-                # Le listener continue silencieusement (pas de crash)
-                pass
+                print(f"⚠️ [LISTENER] DEBUG: Paquet invalide taille {len(status_packet)} (attendu 32)")
 
         except usb.core.USBError as e:
-            if e.errno == 110:  # Timeout errno 110 - normal pendant refroidissement
-                # L'imprimante ne renvoie rien pendant le refroidissement
-                # Le listener ne crash pas et continue la boucle
+            if e.errno == 110:  # Operation timed out - NORMAL avec QL-700 muet
+                print(f"⏰ [LISTENER] DEBUG: Timeout errno 110 (normal avec QL-700) - itération #{iteration_count}")
                 continue
             else:
-                print(f"❌ [LISTENER] Erreur USB inattendue: {e}")
+                print(f"❌ [LISTENER] Erreur USB: {e.errno} - {e}")
                 break
         except Exception as e:
             print(f"❌ [LISTENER] Erreur inattendue: {e}")
             break
 
-    # Ne pas déconnecter - la connexion est partagée
+        # Pause courte pour éviter spam
+        time.sleep(0.1)
+
     print("👂 [LISTENER] Thread d'écoute arrêté")
 
 def writer_thread():
@@ -258,7 +273,11 @@ def writer_thread():
 # API publique asynchrone
 
 def start_async_printer():
-    """Démarre l'architecture asynchrone avec les threads Writer et Listener."""
+    """Démarre l'architecture asynchrone avec les threads Writer seulement.
+
+    Le Listener est désactivé car l'imprimante QL-700 ne semble pas répondre
+    aux commandes de statut Brother QL (réfrigération gérée par timeout simple).
+    """
     if printer_state['running']:
         print("⚠️ [ASYNC] Architecture déjà démarrée")
         return
@@ -272,19 +291,19 @@ def start_async_printer():
     printer_state['running'] = True
     printer_state['cooling'] = False  # État initial
 
-    # Démarrage du thread Listener
+    # THREAD LISTENER ACTIF avec DEBUG FORCÉ
     listener = threading.Thread(target=listener_thread, daemon=True, name="PrinterListener")
     listener.start()
+    print("🎯 [ASYNC] Listener thread ACTIVÉ en mode DEBUG (forcé)")
 
-    # Démarrage du thread Writer
+    # Démarrage du thread Writer uniquement
     writer = threading.Thread(target=writer_thread, daemon=True, name="PrinterWriter")
     writer.start()
 
-    print("✅ [ASYNC] Architecture asynchrone Brother QL-700 démarrée")
-    print("   👂 Listener thread actif avec connexion partagée")
+    print("✅ [ASYNC] Architecture Brother QL-700 démarrée (Writer seulement)")
     print("   ✍️ Writer thread actif avec connexion partagée")
     print("   🔒 Lock USB pour éviter la concurrence")
-    print("   🧊 Gestion automatique du refroidissement")
+    print("   ❄️ Réfrigération gérée par timeout simple (pas de Listener)")
 
 def stop_async_printer():
     """Arrête proprement l'architecture asynchrone."""
