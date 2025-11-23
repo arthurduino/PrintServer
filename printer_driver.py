@@ -15,6 +15,8 @@ printer_state = {
     'running': False,  # État général
     'job_queue': Queue(),  # File d'attente des tâches d'impression
     'current_job': None,  # Tâche en cours
+    'shared_driver': None,  # Instance partagée de PrinterDriver
+    'driver_lock': threading.Lock(),  # Lock pour éviter la concurrence USB
 }
 
 class PrinterDriver:
@@ -120,26 +122,28 @@ class PrinterDriver:
 
 def listener_thread():
     """Thread Listener : lit passivement l'Endpoint IN pour détecter le refroidissement."""
-    driver = PrinterDriver()
-    if not driver.connect_usb():
-        print("❌ [LISTENER] Impossible de se connecter à l'imprimante")
+    shared_driver = printer_state.get('shared_driver')
+    if not shared_driver:
+        print("❌ [LISTENER] Connexion USB partagée non disponible")
         return
 
     # Envoi d'une seule commande de statut au démarrage (pas de polling actif)
     try:
-        status_request = bytes([0x1B, 0x69, 0x53])  # 1B 69 53 - Status Information Request
-        driver.send_command(status_request)
+        with printer_state['driver_lock']:
+            status_request = bytes([0x1B, 0x69, 0x53])  # 1B 69 53 - Status Information Request
+            shared_driver.send_command(status_request)
         print("📡 [LISTENER] Commande de statut initiale envoyée")
     except Exception as e:
         print(f"❌ [LISTENER] Erreur envoi commande statut initiale: {e}")
         return
 
-    print("👂 [LISTENER] Thread d'écoute démarré")
+    print("👂 [LISTENER] Thread d'écoute démarré (connexion partagée)")
 
     while printer_state['running']:
         try:
-            # Lecture passive de 32 octets (Status Information)
-            status_packet = driver.read_response(size=32, timeout=1000)
+            # Lecture passive de 32 octets (Status Information) avec lock
+            with printer_state['driver_lock']:
+                status_packet = shared_driver.read_response(size=32, timeout=1000)
 
             if len(status_packet) == 32:
                 # Analyse des bytes 18 et 22 pour détecter le refroidissement
@@ -173,17 +177,17 @@ def listener_thread():
             print(f"❌ [LISTENER] Erreur inattendue: {e}")
             break
 
-    driver.disconnect()
+    # Ne pas déconnecter - la connexion est partagée
     print("👂 [LISTENER] Thread d'écoute arrêté")
 
 def writer_thread():
     """Thread Writer : traite la file d'attente et envoie les données raster par chunks."""
-    driver = PrinterDriver()
-    if not driver.connect_usb():
-        print("❌ [WRITER] Impossible de se connecter à l'imprimante")
+    shared_driver = printer_state.get('shared_driver')
+    if not shared_driver:
+        print("❌ [WRITER] Connexion USB partagée non disponible")
         return
 
-    print("✍️ [WRITER] Thread d'écriture démarré")
+    print("✍️ [WRITER] Thread d'écriture démarré (connexion partagée)")
 
     while printer_state['running']:
         try:
@@ -227,9 +231,10 @@ def writer_thread():
                             print(f"⚠️ [WRITER] Type de packet inconnu ignoré: {type(packet)} - {packet}")
                             continue
 
-                    # Envoi du chunk si les données sont valides
+                    # Envoi du chunk si les données sont valides avec lock
                     if data_to_send:
-                        driver.send_command(data_to_send)
+                        with printer_state['driver_lock']:
+                            shared_driver.send_command(data_to_send)
                         sent_chunks += 1
 
                         # Debug limité (pas trop verbose)
@@ -247,7 +252,7 @@ def writer_thread():
             # Continuer malgré l'erreur (résilience)
             continue
 
-    driver.disconnect()
+    # Ne pas déconnecter - la connexion est partagée
     print("✍️ [WRITER] Thread d'écriture arrêté")
 
 # API publique asynchrone
@@ -256,6 +261,12 @@ def start_async_printer():
     """Démarre l'architecture asynchrone avec les threads Writer et Listener."""
     if printer_state['running']:
         print("⚠️ [ASYNC] Architecture déjà démarrée")
+        return
+
+    # INITIALISER LA CONNEXION USB PARTAGÉE (règle la concurrence)
+    printer_state['shared_driver'] = PrinterDriver()
+    if not printer_state['shared_driver'].connect_usb():
+        print("❌ [ASYNC] Impossible d'initialiser la connexion USB partagée")
         return
 
     printer_state['running'] = True
@@ -270,8 +281,9 @@ def start_async_printer():
     writer.start()
 
     print("✅ [ASYNC] Architecture asynchrone Brother QL-700 démarrée")
-    print("   👂 Listener thread actif")
-    print("   ✍️ Writer thread actif")
+    print("   👂 Listener thread actif avec connexion partagée")
+    print("   ✍️ Writer thread actif avec connexion partagée")
+    print("   🔒 Lock USB pour éviter la concurrence")
     print("   🧊 Gestion automatique du refroidissement")
 
 def stop_async_printer():
@@ -280,6 +292,7 @@ def stop_async_printer():
         print("⚠️ [ASYNC] Architecture déjà arrêtée")
         return
 
+    print("🛑 [ASYNC] Arrêt de l'architecture asynchrone Brother QL-700...")
     printer_state['running'] = False
 
     # Attendre que la file se vide (timeout de sécurité)
@@ -288,7 +301,19 @@ def stop_async_printer():
     while not printer_state['job_queue'].empty() and (time.time() - start_time) < timeout:
         time.sleep(0.1)
 
-    print("✅ [ASYNC] Architecture asynchrone Brother QL-700 arrêtée")
+    # Déconnecter proprement la connexion USB partagée
+    if printer_state.get('shared_driver'):
+        try:
+            printer_state['shared_driver'].disconnect()
+            print("🧹 [ASYNC] Connexion USB partagée déconnectée proprement")
+        except Exception as e:
+            print(f"⚠️ [ASYNC] Erreur lors de la déconnexion USB: {e}")
+
+        # Nettoyer l'état global
+        printer_state['shared_driver'] = None
+
+    printer_state['cooling'] = False
+    print("✅ [ASYNC] Architecture asynchrone Brother QL-700 arrêtée complètement")
 
 def add_print_job(instructions, label_num, task_id):
     """Ajoute une tâche d'impression à la file d'attente asynchrone."""
