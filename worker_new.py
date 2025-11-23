@@ -184,6 +184,35 @@ def _get_task_progress(task_id: int) -> int:
     conn.close()
     return result[0] if result else 0
 
+def _pre_rotate_landscape_image(image_path: str) -> bool:
+    """
+    PRÉ-ROTATION DES IMAGES PAYSAGE : Méthode "Blindée" pour productions industrielles.
+    Si image paysage (largeur > hauteur), tourner physiquement de 90° avant l'envoi à CUPS.
+    Cela garantit l'orientation correcte sans dépendre des paramètres CUPS.
+    """
+    try:
+        from PIL import Image
+        with Image.open(image_path) as img:
+            width, height = img.size
+
+            # Si l'image est paysage (plus large que haute)
+            if width > height:
+                print(f"🔄 [PRÉ-ROTATION] Image paysage détectée (L={width}, H={height}). Rotation 90° pour adaptation au rouleau...")
+
+                # Effectuer la rotation de 90° dans le sens horaire
+                rotated_img = img.rotate(90, expand=True)
+                rotated_img.save(image_path, 'PNG')
+
+                # Log les nouvelles dimensions
+                new_width, new_height = rotated_img.size
+                print(f"✅ [PRÉ-ROTATION] Image sauvegardée tournée (L={new_width}, H={new_height})")
+
+                return True  # Rotation effectuée
+    except Exception as e:
+        print(f"⚠️ [PRÉ-ROTATION] Erreur lors de la pré-rotation: {e}")
+
+    return False  # Pas de rotation nécessaire ou erreur
+
 def _preprocess_image(image_path: str, task_id: int, config: dict) -> str:
     """Pré-traite l'image : redimensionnement automatique pour compatibilité Brother QL-700."""
     try:
@@ -271,35 +300,21 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"🔥 [RECOVERY] Reprise tâche {task_id} depuis impression #{qty_done + 1}")
 
     try:
-        # 1. DÉTECTION DE L'ORIENTATION ORIGINALE (avant prétraitement)
-        original_orientation = _detect_original_orientation(image_path)
-        print(f"📐 [ORIGINAL] Image {os.path.basename(image_path)}: {original_orientation}")
+        # 1. PRÉ-ROTATION PHYSIQUE pour images paysage (Méthode "Blindée")
+        # Cette approche est indépendante du driver CUPS et garantit l'orientation
+        if _pre_rotate_landscape_image(image_path):
+            print(f"🌀 [PRÉ-ROTATION] Image paysage tournée physiquement - orientation garantie !")
 
         # 2. PRÉ-TRAITEMENT DE L'IMAGE (Redimensionnement automatique)
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-        # 3. CONFIGURATION DE LA ROTATION (priorité au config explicite)
-        # Vérifier d'abord si une rotation explicite est demandée dans la config
-        config_rotation = config.get('rotate')
-        if config_rotation and config_rotation != 0:
-            rotation = str(config_rotation)  # Respect des paramètres explicites
-            print(f"⚙️ Rotation explicite {config_rotation}° depuis la config")
-        else:
-            # Sinon, appliquer la logique automatique basée sur l'orientation originale
-            rotation = '0'  # Pas de rotation par défaut
-            if original_orientation == "portrait":
-                rotation = '90'  # Rotation uniquement pour les images portrait
-                print("🔄 Rotation automatique 90° appliquée pour image portrait")
-            else:
-                rotation = '0'  # Pas de rotation pour les images paysage
-
-        # 3. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
+        # 3. CONVERSION OPTIMISÉE - AUCUNE ROTATION CUPS (l'image est déjà orientée correctement)
         qlr = BrotherQLRaster(MODEL)
         instructions = convert(
             qlr, [processed_image_path], label_type,
             cut=True, dither=True, compress=False,
-            rotate=rotation, red=False, dpi_600=(dpi==600)
+            rotate='0', red=False, dpi_600=(dpi==600)  # Rotation CUPS forcée à 0
         )
 
         # 3. AJOUT DES TÂCHES D'IMPRESSION À LA FILE ASYNCHRONE
@@ -356,35 +371,20 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
             current_label_num = qty_done + i + 1
             print(f"📋 [ASYNC] Traitement image #{current_label_num}/{qty_tot}: {os.path.basename(img_path)}")
 
-            # 1. DÉTECTION DE L'ORIENTATION ORIGINALE (avant prétraitement)
-            original_orientation = _detect_original_orientation(img_path)
-            print(f"📐 [ORIGINAL] Image {os.path.basename(img_path)}: {original_orientation}")
+            # 1. PRÉ-ROTATION PHYSIQUE pour images paysage (Méthode "Blindée")
+            # Même approche pour chaque image de la série
+            if _pre_rotate_landscape_image(img_path):
+                print(f"🌀 [PRÉ-ROTATION] Image série paysage tournée physiquement !")
 
             # 2. PRÉ-TRAITEMENT DE CHAQUE IMAGE
             processed_image_path = _preprocess_image(img_path, task_id, config)
 
-            # 3. CONFIGURATION DE LA ROTATION (priorité au config explicite)
-            # Vérifier d'abord si une rotation explicite est demandée dans la config
-            config_rotation = config.get('rotate')
-            if config_rotation and config_rotation != 0:
-                rotation = str(config_rotation)  # Respect des paramètres explicites
-                print(f"⚙️ Rotation explicite {config_rotation}° depuis la config")
-            else:
-                # Sinon, appliquer la logique automatique basée sur l'orientation originale
-                rotation = '0'  # Pas de rotation par défaut
-                if original_orientation == "portrait":
-                    rotation = '90'  # Rotation uniquement pour les images portrait
-                    print("🔄 Rotation automatique 90° appliquée pour image portrait")
-                else:
-                    rotation = '0'  # Pas de rotation pour les images paysage
-                    print("📐 Image paysage - pas de rotation automatique")
-
-            # 3. Conversion de chaque image
+            # 3. CONVERSION OPTIMISÉE - AUCUNE ROTATION CUPS (l'image est déjà orientée correctement)
             qlr = BrotherQLRaster(MODEL)
             instructions = convert(
                 qlr, [processed_image_path], label_type,
                 cut=cut, dither=True, compress=False,
-                rotate=rotation, red=False, dpi_600=(dpi==600)
+                rotate='0', red=False, dpi_600=(dpi==600)  # Rotation CUPS forcée à 0
             )
 
             # 3. Ajouter à la file d'attente asynchrone
