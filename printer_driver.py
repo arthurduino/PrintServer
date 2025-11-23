@@ -6,8 +6,8 @@ from queue import Queue, Empty
 import struct
 
 # Constantes USB Brother QL-700
-VENDOR_ID = 0x04b8
-PRODUCT_ID = 0x0202
+VENDOR_ID = 0x04b8  # Brother Industries
+PRODUCT_ID = 0x0041  # QL-700
 
 # États globaux thread-safe (mémoire partagée)
 printer_state = {
@@ -29,13 +29,39 @@ class PrinterDriver:
     def connect_usb(self):
         """Établit la connexion USB (méthode de compatibilité)."""
         try:
+            print(f"🔍 [PRINTER_DRIVER] Recherche imprimante Brother QL-700 (VID:0x{VENDOR_ID:04X}, PID:0x{PRODUCT_ID:04X})")
+
+            # Recherche de l'imprimante
             self.dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
+
             if self.dev is None:
-                raise usb.core.USBError("Imprimante non trouvée")
+                print("❌ [PRINTER_DRIVER] Imprimante Brother QL-700 non trouvée")
+                print("🔧 [PRINTER_DRIVER] Vérifiez:")
+                print("   - L'imprimante est branchée et allumée")
+                print("   - Aucun autre logiciel n'utilise l'imprimante")
+                print("   - Permissions USB (sur Linux/Raspberry Pi)")
+                print("   - VID/PID corrects pour le modèle QL-700")
+
+                # Lister tous les périphériques USB disponibles pour diagnostic
+                try:
+                    import usb.core
+                    devices = list(usb.core.find(find_all=True))
+                    print(f"📋 [PRINTER_DRIVER] Périphériques USB détectés: {len(devices)}")
+                    for i, dev in enumerate(devices[:5]):  # Limiter à 5 premiers
+                        print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X} - {dev.manufacturer} {dev.product}")
+                    if len(devices) > 5:
+                        print(f"   ... et {len(devices)-5} autres")
+                except Exception as list_e:
+                    print(f"❌ [PRINTER_DRIVER] Impossible de lister les USB: {list_e}")
+
+                raise usb.core.USBError("Imprimante Brother QL-700 non trouvée")
+
+            print(f"✅ [PRINTER_DRIVER] Imprimante trouvée - Configuration USB...")
 
             # Détacher kernel driver
             try:
                 if self.dev.is_kernel_driver_active(0):
+                    print("🔧 [PRINTER_DRIVER] Détachement du driver kernel...")
                     self.dev.detach_kernel_driver(0)
             except (AttributeError, NotImplementedError):
                 pass
@@ -59,6 +85,8 @@ class PrinterDriver:
                 raise usb.core.USBError("Endpoints USB non trouvés")
 
             print("✅ [PRINTER_DRIVER] Connexion établie avec compatibilité ancienne")
+            print(f"   📥 ENDPOINT_IN: 0x{self.ep_in.bEndpointAddress:02X}")
+            print(f"   📤 ENDPOINT_OUT: 0x{self.ep_out.bEndpointAddress:02X}")
             return True
 
         except Exception as e:
