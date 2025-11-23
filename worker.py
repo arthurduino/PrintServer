@@ -218,7 +218,7 @@ def _check_command_completion(cmd_id: int):
     conn.close()
 
 def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
-    """Traite une tâche BATCH : envoie les étiquettes à CUPS et suit leur progression réelle."""
+    """Traite une tâche BATCH : envoie les étiquettes à CUPS pour impression."""
     if not print_batch_cups:
         raise ImportError("Service CUPS non disponible")
 
@@ -230,23 +230,21 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     print(f"📁 [WORKER] Fichier existe: {os.path.exists(image_path)}")
 
     try:
-        from print_service import PRINTER_NAME
-        import cups
-
         # 1. PRÉ-TRAITEMENT DE L'IMAGE (Redimensionnement automatique)
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-    # 2. CRÉATION DE LA LISTE DES FICHIERS À IMPRIMER
+        # 2. CRÉATION DE LA LISTE DES FICHIERS À IMPRIMER
+        # CUPS gère maintenant la file d'attente et le spooler
         image_paths = [processed_image_path] * qty_tot  # qty_tot copies du même fichier
         print(f"📋 [CUPS] Préparation {qty_tot} étiquettes identiques pour tâche {task_id}")
 
-        # 3. ENVOI À CUPS AVEC SUIVI DES JOBS INDIVIDUELS (page par page)
-        qty_done = _get_task_progress(task_id)  # Récupérer la progression actuelle
-        print(f"📊 [PROGRESS] Déjà {qty_done}/{qty_tot} fait(s) pour tâche {task_id}")
-        success = print_batch_individual_jobs(image_paths, f"TASK_{task_id}", task_id, qty_tot, qty_done)
+        # 3. ENVOI À CUPS (le spooler système gère désormais tout)
+        success = print_batch_cups(image_paths, f"TASK_{task_id}")
         if success:
-            print(f"✅ [CUPS] Tous les {qty_tot} étiquettes envoyées et confirmées terminées pour tâche {task_id}")
+            # Mise à jour de la progression - tout envoyé d'un coup
+            _update_task_progress(task_id, qty_tot)
+            print(f"✅ [CUPS] {qty_tot} étiquettes envoyées au spooler CUPS pour tâche {task_id}")
         else:
             raise Exception("Échec d'envoi à CUPS")
 
@@ -258,129 +256,8 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         traceback.print_exc()
         raise
 
-def print_batch_cups_with_tracking(image_paths, job_id, task_id, qty_tot, qty_done=0):
-    """
-    Envoie un batch d'images à CUPS et attend la fin réelle de chaque impression.
-    Met à jour la progression en temps réel basé sur les jobs CUPS terminés.
-    qty_done permet de reprendre une tâche déjà commencée.
-    """
-    try:
-        import cups
-        from print_service import PRINTER_NAME
-    except ImportError:
-        print("❌ Impossible d'importer CUPS ou print_service")
-        return False
-
-    conn = cups.Connection()
-
-    # Vérification présence imprimante
-    printers = conn.getPrinters()
-    if PRINTER_NAME not in printers:
-        print(f"ERREUR: L'imprimante '{PRINTER_NAME}' n'est pas installée dans CUPS.")
-        return False
-
-    print(f"🚀 Début du job suivi {job_id} via CUPS ({len(image_paths)} étiquettes)")
-    print(f"📊 [TRACKING] Déjà {qty_done} fait(s), suivi en temps réel pour tâche {task_id}")
-
-    # Configuration des options d'impression Brother
-    options = {
-        "PageSize": "62x29mm",
-        "BrPriority": "BrQuality",
-        "BrBrightness": "7",
-        "BrCutAtEnd": "ON"
-    }
-
-    cups_job_ids = []  # Liste des job IDs CUPS créés
-
-    # 1. ENVOI DE TOUS LES FICHIERS À CUPS (seulement ceux pas encore faits)
-    images_remaining = qty_tot - qty_done
-    print(f"📋 [BATCH] Envoi de {images_remaining} étiquettes restantes ({qty_done} déjà faites)")
-
-    for index, img_path in enumerate(image_paths[:images_remaining]):
-        if not os.path.exists(img_path):
-            print(f"⚠️ Fichier manquant : {img_path}")
-            continue
-
-        try:
-            img_options = options.copy()
-            img_options["orientation-requested"] = "4"  # 90° clockwise
-
-            # Envoi à CUPS avec les options appropriées
-            cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
-            cups_job_ids.append(cups_job_id)
-            print(f"✅ Étiquette {index+1}/{images_remaining} envoyé (ID CUPS: {cups_job_id})")
-
-            time.sleep(0.1)  # Petit délai pour éviter la surcharge
-
-        except cups.IPPError as e:
-            print(f"❌ Erreur CUPS sur l'image {img_path}: {e}")
-            return False
-
-    if not cups_job_ids:
-        print(f"⚠️ [TRACKING] Aucune nouvelle étiquette à envoyer - déjà {qty_done}/{qty_tot} fait(es)")
-        return True  # Rien à faire, considérer succès
-
-    print(f"📋 Tous les {len(cups_job_ids)} nouveaux fichiers transmis au spooler système")
-    print(f"⏳ [TRACKING] Attente de la fin réelle des impressions...")
-
-    # 2. SUIVI DES JOBS CUPS EN TEMPS RÉEL
-    completed_count = qty_done  # Commencer avec la quantité déjà faite
-    pending_jobs = cups_job_ids.copy()  # Copie pour éviter les problèmes de modification pendant l'itération
-    max_wait_time = 300  # 5 minutes timeout maximum
-    start_time = time.time()
-
-    while completed_count < qty_tot and (time.time() - start_time) < max_wait_time:
-        try:
-            # Récupération de l'état de tous les jobs CUPS
-            jobs_status = conn.getJobs(which_jobs='all', requested_attributes=['id', 'job-state'])
-
-            # Vérification de nos jobs en cours
-            jobs_to_remove = []  # Collecter les jobs à retirer
-
-            for job_id in pending_jobs:
-                if job_id in jobs_status:
-                    state = jobs_status[job_id].get('job-state', 0)
-                    # États terminés : 7=canceled, 8=aborted, 9=completed
-                    if state in [7, 8, 9]:
-                        completed_count += 1
-                        jobs_to_remove.append(job_id)
-                        print(f"📊 [TRACKING] Job CUPS {job_id} terminé (état: {state})")
-                        print(f"📊 [TRACKING] Progression cumulée: {completed_count}/{qty_tot} étiquettes terminées")
-
-            # Retirer les jobs terminés
-            for job_id in jobs_to_remove:
-                pending_jobs.remove(job_id)
-
-            # MISE À JOUR RÉELLE DE LA PROGRESSION si il y a du nouveau
-            if jobs_to_remove and completed_count > qty_done:
-                _update_task_progress(task_id, completed_count)
-                print(f"📊 [TRACKING] Base mise à jour: {completed_count}/{qty_tot} étiquettes terminées")
-
-            if completed_count >= qty_tot:
-                print(f"✅ [TRACKING] Toutes les {qty_tot} étiquettes confirmées terminées!")
-                break
-
-        except Exception as e:
-            print(f"⚠️ [TRACKING] Erreur lors de la vérification: {e}")
-
-        time.sleep(1)  # Vérification chaque seconde
-
-    if completed_count >= qty_tot:
-        print(f"🏁 [TRACKING] Job {job_id} (tâche {task_id}) terminé avec succès")
-        return True
-    elif completed_count >= qty_tot // 2:
-        # Au moins la moitié terminée = considérer comme succès partiel
-        print(f"⚠️ [TRACKING] Succès partiel: {completed_count}/{qty_tot} étiquettes terminées")
-        return True
-    else:
-        print(f"❌ [TRACKING] Échec: seulement {completed_count}/{qty_tot} terminés dans le timeout")
-        return False
-
 def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
     """Traite une tâche SERIES : envoie les étiquettes à CUPS pour impression."""
-    print("⚠️ [SERIES] Fonction series pas encore implémentée avec le tracking CUPS")
-    print("Utilisant la méthode simple pour l'instant...")
-
     if not print_batch_cups:
         raise ImportError("Service CUPS non disponible")
 
@@ -415,100 +292,6 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         import traceback
         traceback.print_exc()
         raise
-
-def print_batch_individual_jobs(image_paths, job_id, task_id, qty_tot, qty_done=0):
-    """
-    SUIVI DIRECTEMENT DEPUIS CUPS : compte combien de jobs ont été réellement terminés
-    par le système CUPS (sans présupposer rien sur les états intermédiaires).
-    """
-    try:
-        import cups
-        from print_service import PRINTER_NAME
-    except ImportError:
-        print("❌ Impossible d'importer CUPS")
-        return False
-
-    print(f"🎯 [CUPS_DIRECT] Mode suivi direct CUPS pour {qty_tot} étiquettes")
-    print(f"🚀 [CUPS_DIRECT] Tâche {task_id}: vérification directe des jobs CUPS terminés")
-
-    conn = cups.Connection()
-    options = {
-        "PageSize": "62x29mm",
-        "BrPriority": "BrQuality",
-        "BrBrightness": "7",
-        "BrCutAtEnd": "ON"
-    }
-
-    # 1. ENVOI IMMÉDIAT DE TOUTES LES ÉTIQUETTES À CUPS
-    job_ids = []
-    images_remaining = qty_tot - qty_done
-
-    print(f"📦 [CUPS_DIRECT] Envoi de {images_remaining} étiquettes à CUPS...")
-
-    for i in range(images_remaining):
-        page_index = qty_done + i + 1
-        img_path = image_paths[i]
-
-        try:
-            img_options = options.copy()
-            img_options["orientation-requested"] = "4"
-
-            job_id_cups = conn.printFile(PRINTER_NAME, img_path, f"{job_id}_{page_index}", img_options)
-            job_ids.append(job_id_cups)
-            print(f"✅ [CUPS_DIRECT] Page {page_index}: job CUPS {job_id_cups}")
-
-            time.sleep(0.1)  # Petit délai pour éviter surcharge
-
-        except cups.IPPError as e:
-            print(f"❌ [CUPS_DIRECT] Erreur envoi page {page_index}: {e}")
-            return False
-
-    print(f"📋 [CUPS_DIRECT] {len(job_ids)} jobs envoyés à CUPS. Surveillance directe...")
-
-    # 2. SURVEILLANCE DIRECTE : attendre que CUPS marque les jobs comme terminés
-    completed_count = qty_done
-    total_jobs_sent = len(job_ids)
-    max_wait = 300  # 5 minutes timeout total
-    start_time = time.time()
-
-    print(f"🔍 [CUPS_DIRECT] Surveillance: {completed_count}/{qty_tot} (attente de {total_jobs_sent} nouveaux jobs)")
-
-    while completed_count < qty_tot and (time.time() - start_time) < max_wait:
-        try:
-            # Récupérer TOUS les jobs CUPS terminés pour cette imprimante
-            all_jobs = conn.getJobs(which_jobs='completed', requested_attributes=['id', 'job-state'])
-            our_completed_jobs = [
-                job_id for job_id in all_jobs.keys()
-                if job_id in job_ids  # Seulement nos jobs
-            ]
-
-            new_completed = len(our_completed_jobs)
-            progression_absolute = qty_done + new_completed
-
-            # Si progression différente, mettre à jour
-            if progression_absolute > completed_count:
-                completed_count = progression_absolute
-                _update_task_progress(task_id, completed_count)
-                print(f"📊 [CUPS_DIRECT] Progression CUPS détectée: {completed_count}/{qty_tot} terminés")
-
-                if completed_count >= qty_tot:
-                    print(f"🎉 [CUPS_DIRECT] Toutes les étiquettes confirmées terminées par CUPS!")
-                    break
-
-        except Exception as e:
-            print(f"⚠️ [CUPS_DIRECT] Erreur surveillance: {e}")
-
-        time.sleep(1)  # Vérification chaque seconde
-
-    if completed_count >= qty_tot:
-        print(f"✅ [CUPS_DIRECT] SUCCESS: {qty_tot} étiquettes terminées")
-        return True
-    elif completed_count > qty_done:
-        print(f"⚠️ [CUPS_DIRECT] PARTIAL: {completed_count}/{qty_tot} terminées")
-        return True  # Considérer comme succès partiel
-    else:
-        print(f"❌ [CUPS_DIRECT] FAILED: seulement {completed_count}/{qty_tot}")
-        return False
 
 # Exemple d'utilisation (dans main.py plus tard) :
 # run_worker()
