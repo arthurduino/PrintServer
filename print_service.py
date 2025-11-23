@@ -23,15 +23,13 @@ def print_batch_cups(image_paths, job_id):
 
     print(f"🚀 Début du job {job_id} via CUPS ({len(image_paths)} étiquettes)")
 
-    # Configuration des options d'impression pour CUPS
-    # Options pour Brother QL-700 via le driver brother-ql-700.ppd
+    # Configuration des options d'impression Brother
+    # Utilise les options spécifiques du driver brother-ql-700.ppd
     options = {
-        "Resolution": "300dpi",  # Qualité : 300dpi, 600dpi (plus lent mais meilleure qualité)
-        "PageSize": "62x29mm",   # Format d'étiquette
-        "MediaType": "continuous",   # Type de média
-        "CutMedia": "true",      # Découpe automatique
-        "Halftoning": "error-diffusion",  # Qualité du tramage
-        "PrintSpeed": "normal"   # Vitesse : fast, normal, slow (affecte la chaleur/refroidissement)
+        "PageSize": "62x29mm",
+        "BrPriority": "BrQuality",    # Priorité qualité
+        "BrBrightness": "7",          # Luminosité optimale
+        "BrCutAtEnd": "ON"            # Découpe automatique
     }
 
     job_ids = []
