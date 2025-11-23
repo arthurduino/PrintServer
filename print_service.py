@@ -21,7 +21,7 @@ def detect_image_orientation(image_path):
 def print_batch_cups(image_paths, job_id):
     """
     Envoie une liste d'images à l'imprimante via CUPS.
-    Aucune rotation appliquée aux images (orientation d'origine conservée).
+    Rotation de 90° appliquée à toutes les images.
 
     Args:
         image_paths (list): Liste des chemins absolus des fichiers images (.png, .jpg).
@@ -61,9 +61,9 @@ def print_batch_cups(image_paths, job_id):
             # Copier les options de base
             img_options = options.copy()
 
-            # AUCUNE ROTATION appliquée à aucune image
-            img_options["orientation-requested"] = "1"  # Pas de rotation pour toutes les images
-            print(f"� Aucune rotation appliquée - orientation d'origine conservée")
+            # ROTATION DE 90° appliquée à toutes les images
+            img_options["orientation-requested"] = "4"  # 90° clockwise pour toutes les images
+            print(f"🔄 Rotation 90° appliquée à toutes les images")
 
             # Envoi à CUPS avec les options appropriées
             cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
