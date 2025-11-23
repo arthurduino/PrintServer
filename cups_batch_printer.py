@@ -33,16 +33,19 @@ class CupsBatchPrinter:
         """
         Fonction bloquante qui affiche la progression en temps réel.
         À exécuter dans un thread séparé si besoin.
+
+        CORRECTION: Utilise my_jobs=False pour voir tous les jobs système,
+        pas seulement ceux de l'utilisateur actuel.
         """
         total = len(job_ids)
         pending_ids = set(job_ids)
 
-        print("⏳ Démarrage du suivi d'impression...")
+        print("⏳ Démarrage du suivi d'impression avec correction my_jobs=False...")
 
         while pending_ids:
-            # Récupère tous les jobs actifs (Processing ou Pending)
-            # which_jobs='not-completed' est le défaut
-            current_jobs = self.conn.getJobs(my_jobs=True, which_jobs='not-completed')
+            # CORRECTION: my_jobs=False pour voir TOUS les jobs système
+            # which_jobs='not-completed' inclut pending, processing, etc.
+            current_jobs = self.conn.getJobs(my_jobs=False, which_jobs='not-completed')
 
             # Les jobs encore dans 'current_jobs' ne sont pas finis
             active_ids = set(current_jobs.keys())
@@ -64,12 +67,9 @@ class CupsBatchPrinter:
             if not still_running:
                 break
 
-            # Mise à jour de la liste locale pour le prochain tour
-            # (Optionnel, ici on recalcul tout à chaque fois pour être sûr)
-
             time.sleep(1) # Pause pour ne pas spammer CUPS
 
-        print(f"\n✅ Impression terminée ! ({total} étiquettes)")
+        print(f"\n✅ Impression terminée ! ({total} étiquettes) - Jobs suivis: {job_ids}")
 
 # --- EXEMPLE D'UTILISATION ---
 if __name__ == "__main__":
