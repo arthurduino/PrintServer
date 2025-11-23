@@ -12,6 +12,7 @@ from database import (
 )
 # Architecture CUPS uniquement - Migration complète terminée ✅
 # worker.py utilise print_service.py qui gère CUPS nativement
+import print_service
 from worker import run_worker
 
 app = FastAPI(title="Print Server API")
