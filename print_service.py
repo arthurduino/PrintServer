@@ -23,12 +23,15 @@ def print_batch_cups(image_paths, job_id):
 
     print(f"🚀 Début du job {job_id} via CUPS ({len(image_paths)} étiquettes)")
 
-    # Configuration des options d'impression
-    # Ces options dépendent du PPD installé.
-    # Pour QL-700 Linux, souvent pas besoin d'options complexes si le défaut est bien réglé.
+    # Configuration des options d'impression pour CUPS
+    # Options pour Brother QL-700 via le driver brother-ql-700.ppd
     options = {
-        # "PageSize": "Custom.62x100mm", # Ajuster selon besoin si pas défaut
-        # "Resolution": "300dpi"
+        "Resolution": "300dpi",  # Qualité : 300dpi, 600dpi (plus lent mais meilleure qualité)
+        "PageSize": "62x29mm",   # Format d'étiquette
+        "MediaType": "continuous",   # Type de média
+        "CutMedia": "true",      # Découpe automatique
+        "Halftoning": "error-diffusion",  # Qualité du tramage
+        "PrintSpeed": "normal"   # Vitesse : fast, normal, slow (affecte la chaleur/refroidissement)
     }
 
     job_ids = []
