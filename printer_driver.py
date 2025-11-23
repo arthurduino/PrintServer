@@ -5,9 +5,9 @@ import time
 from queue import Queue, Empty
 import struct
 
-# CORRECTIFS BROTHER QL-700
-ID_VENDOR = 0x04f9   # Brother Industries, Ltd
-ID_PRODUCT = 0x2042  # QL-700 Label Printer
+# Constantes USB Brother QL-700
+VENDOR_ID = 0x04f9  # Brother Industries
+PRODUCT_ID = 0x2042  # QL-700
 
 # États globaux thread-safe (mémoire partagée)
 printer_state = {
@@ -46,13 +46,9 @@ class PrinterDriver:
                 try:
                     devices = list(usb.core.find(find_all=True))
                     print(f"📋 [PRINTER_DRIVER] Périphériques USB détectés: {len(devices)}")
+                    print(f"📋 [PRINTER_DRIVER] Périphériques USB détectés: {len(devices)}")
                     for i, dev in enumerate(devices[:5]):  # Limiter à 5 premiers
-                        try:
-                            mfg = dev.manufacturer or ""
-                            prod = dev.product or ""
-                            print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X} - {mfg} {prod}".strip())
-                        except:
-                            print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X}")
+                        print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X} - {dev.manufacturer} {dev.product}")
                     if len(devices) > 5:
                         print(f"   ... et {len(devices)-5} autres")
                 except Exception as list_e:
