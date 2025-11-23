@@ -1,0 +1,16 @@
+[Unit]
+Description=Configuration automatique imprimante Brother QL-700
+After=network.target cups.service
+Wants=cups.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/admin/PrintServer/auto_configure_printer.sh
+RemainAfterExit=true
+StandardOutput=journal
+StandardError=journal
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
