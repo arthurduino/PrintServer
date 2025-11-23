@@ -44,11 +44,15 @@ class PrinterDriver:
 
                 # Lister tous les périphériques USB disponibles pour diagnostic
                 try:
-                    import usb.core
                     devices = list(usb.core.find(find_all=True))
                     print(f"📋 [PRINTER_DRIVER] Périphériques USB détectés: {len(devices)}")
                     for i, dev in enumerate(devices[:5]):  # Limiter à 5 premiers
-                        print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X} - {dev.manufacturer} {dev.product}")
+                        try:
+                            mfg = dev.manufacturer or ""
+                            prod = dev.product or ""
+                            print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X} - {mfg} {prod}".strip())
+                        except:
+                            print(f"   [{i}] VID:0x{dev.idVendor:04X} PID:0x{dev.idProduct:04X}")
                     if len(devices) > 5:
                         print(f"   ... et {len(devices)-5} autres")
                 except Exception as list_e:
