@@ -33,6 +33,14 @@ except ImportError as e:
     add_print_job = None
     printer_state = None
 
+# Import de la fonction de détection d'orientation
+try:
+    from print_service import detect_image_orientation
+    print("✅ Fonction de détection d'orientation importée")
+except ImportError as e:
+    print(f"⚠️ Fonction de détection d'orientation non disponible: {e}")
+    detect_image_orientation = None
+
 # Modèle QL-700 comme string
 MODEL = 'QL-700'
 print(f"Modèle Brother QL-700: {MODEL}")
@@ -267,12 +275,26 @@ def _process_batch_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
         processed_image_path = _preprocess_image(image_path, task_id, config)
         print(f"🔧 [WORKER] Image pré-traitée: {processed_image_path}")
 
-        # 2. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
+        # 2. DÉTECTION DE L'ORIENTATION ET CONFIGURATION DE LA ROTATION
+        rotation = '0'  # Pas de rotation par défaut
+        if detect_image_orientation:
+            orientation = detect_image_orientation(processed_image_path)
+            print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
+            if orientation == "portrait":
+                rotation = '90'  # Rotation uniquement pour les images portrait
+                print("🔄 Rotation 90° appliquée pour image portrait")
+            else:
+                rotation = '0'  # Pas de rotation pour les images paysage
+                print("📐 Image paysage - pas de rotation")
+        else:
+            print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
+
+        # 3. CONVERSION OPTIMISÉE AVEC DITHER FORCÉ
         qlr = BrotherQLRaster(MODEL)
         instructions = convert(
             qlr, [processed_image_path], label_type,
             cut=True, dither=True, compress=False,
-            rotate='90', red=False, dpi_600=(dpi==600)
+            rotate=rotation, red=False, dpi_600=(dpi==600)
         )
 
         # 3. AJOUT DES TÂCHES D'IMPRESSION À LA FILE ASYNCHRONE
@@ -332,12 +354,26 @@ def _process_series_task(task_id: int, cmd_id: int, config: dict, qty_tot: int):
             # 1. Pré-traitement de chaque image
             processed_image_path = _preprocess_image(img_path, task_id, config)
 
-            # 2. Conversion de chaque image
+            # 2. DÉTECTION DE L'ORIENTATION ET CONFIGURATION DE LA ROTATION
+            rotation = '0'  # Pas de rotation par défaut
+            if detect_image_orientation:
+                orientation = detect_image_orientation(processed_image_path)
+                print(f"📐 Image {os.path.basename(processed_image_path)}: {orientation}")
+                if orientation == "portrait":
+                    rotation = '90'  # Rotation uniquement pour les images portrait
+                    print("🔄 Rotation 90° appliquée pour image portrait")
+                else:
+                    rotation = '0'  # Pas de rotation pour les images paysage
+                    print("📐 Image paysage - pas de rotation")
+            else:
+                print("⚠️ Fonction de détection d'orientation non disponible - aucune rotation appliquée")
+
+            # 3. Conversion de chaque image
             qlr = BrotherQLRaster(MODEL)
             instructions = convert(
                 qlr, [processed_image_path], label_type,
                 cut=cut, dither=True, compress=False,
-                rotate='90', red=False, dpi_600=(dpi==600)
+                rotate=rotation, red=False, dpi_600=(dpi==600)
             )
 
             # 3. Ajouter à la file d'attente asynchrone
