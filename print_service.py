@@ -61,12 +61,13 @@ def print_batch_cups(image_paths, job_id):
             # Copier les options de base
             img_options = options.copy()
 
-            # Appliquer la rotation pour les images portrait
+            # CORRECTION : ne tourner que les images portrait, laisser les paysages sans rotation
             if orientation == "portrait":
-                img_options["orientation-requested"] = "4"  # 90° clockwise
-                print(f"🔄 Rotation 90° appliquée pour image portrait")
+                img_options["orientation-requested"] = "4"  # 90° clockwise pour portraits
+                print(f"🔄 Rotation 90° appliquée UNIQUEMENT pour image portrait")
             else:
-                img_options["orientation-requested"] = "3"  # Pas de rotation (landscape)
+                img_options["orientation-requested"] = "1"  # Pas de rotation pour puypygases
+                print(f"📐 Image paysage - AUCUNE rotation appliquée")
 
             # Envoi à CUPS avec les options appropriées
             cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
