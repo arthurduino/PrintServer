@@ -5,9 +5,23 @@ import time
 # Nom de l'imprimante défini dans CUPS
 PRINTER_NAME = "Brother_QL-700"
 
+def detect_image_orientation(image_path):
+    """
+    Détecte l'orientation d'une image (portrait/landscape).
+    """
+    try:
+        from PIL import Image
+        with Image.open(image_path) as img:
+            width, height = img.size
+            return "portrait" if height > width else "landscape"
+    except:
+        # En cas d'erreur, considérer comme paysage
+        return "landscape"
+
 def print_batch_cups(image_paths, job_id):
     """
     Envoie une liste d'images à l'imprimante via CUPS.
+    Tourne automatiquement les images portrait à 90°.
 
     Args:
         image_paths (list): Liste des chemins absolus des fichiers images (.png, .jpg).
@@ -40,9 +54,22 @@ def print_batch_cups(image_paths, job_id):
             continue
 
         try:
-            # Envoi à CUPS
-            # printFile(imprimante, fichier, titre, options)
-            cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", options)
+            # Détection orientation et configuration des options
+            orientation = detect_image_orientation(img_path)
+            print(f"📐 Image {index+1}: {orientation} - {os.path.basename(img_path)}")
+
+            # Copier les options de base
+            img_options = options.copy()
+
+            # Appliquer la rotation pour les images portrait
+            if orientation == "portrait":
+                img_options["orientation-requested"] = "4"  # 90° clockwise
+                print(f"🔄 Rotation 90° appliquée pour image portrait")
+            else:
+                img_options["orientation-requested"] = "3"  # Pas de rotation (landscape)
+
+            # Envoi à CUPS avec les options appropriées
+            cups_job_id = conn.printFile(PRINTER_NAME, img_path, f"Job_{job_id}_{index+1}", img_options)
             job_ids.append(cups_job_id)
             print(f"✅ Étiquette {index+1}/{len(image_paths)} envoyée au spooler (ID CUPS: {cups_job_id})")
 

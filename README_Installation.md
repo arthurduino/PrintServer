@@ -52,6 +52,27 @@ journalctl -u printer-setup -f
 tail -f /var/log/printer_setup.log
 ```
 
+## 🔄 Fonctionnalités Avancées
+
+### Rotation Automatique des Images
+- ✅ **Détection automatique** : portrait vs paysage
+- ✅ **Rotation 90°** des images portrait
+- ✅ **Optimisation Brother** : utilise les bonnes options CUPS
+
+**Comment ça marche :**
+```python
+# Le code détecte automatiquement l'orientation
+orientation = detect_image_orientation(image_path)
+if orientation == "portrait":
+    options["orientation-requested"] = "4"  # 90° clockwise
+```
+
+### Test de Rotation
+```bash
+# Tester la détection d'orientation
+python3 test_rotation.py
+```
+
 ## 🎛️ Configuration Manuelle (Si nécessaire)
 
 Si l'auto-configuration ne fonctionne pas :
@@ -109,6 +130,7 @@ Après installation :
 - ✅ **Imprimante Brother** configurée avec options optimisées
 - ✅ **PrintServer** utilisant CUPS exclusivement
 - ✅ **Plus de gestion manuelle** du refroidissement
+- ✅ **Rotation automatique** des images portrait à 90°
 
 ## 🔧 Dépannage
 
