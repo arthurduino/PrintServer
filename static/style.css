@@ -566,6 +566,51 @@ progress::-moz-progress-bar {
     background: #b91c1c;
 }
 
+/* Enhanced queue button styling for new controls */
+.queue-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.queue-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.queue-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.queue-btn.delete-job {
+    background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
+    color: #333;
+}
+
+.queue-btn.delete-task {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+}
+
+.queue-btn:hover.delete-job {
+    background: linear-gradient(135deg, #ffb300 0%, #ff8f00 100%);
+}
+
+.queue-btn:hover.delete-task {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+}
+
 .recovery-icon {
     font-size: 1rem;
 }

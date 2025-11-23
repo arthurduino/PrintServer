@@ -4,6 +4,7 @@ console.log('Homepage script loaded');
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Homepage DOM loaded, initializing interface...');
     loadInitialData();
+    setupEventListeners();
 });
 
 async function loadInitialData() {
@@ -163,7 +164,7 @@ function updateJobList(jobs) {
         pendingTasks.map(task => createTaskHTML(task)).join('');
 }
 
-// Affichage minimaliste des tâches
+// Affichage amélioré des tâches avec plus de détails
 function createTaskHTML(task) {
     const clientName = task.clientName || 'Client';
     const progress = task.progress > 0 ? ` (${task.progress}/${task.quantity})` : '';
@@ -174,13 +175,31 @@ function createTaskHTML(task) {
         imagePart = `<img src="/uploads/${filename}" style="width: 40px; height: 30px; object-fit: cover; border-radius: 3px;">`;
     }
 
-    return `<div style="display: flex; align-items: center; padding: 10px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 5px; background: white;">
-        <div style="width: 50px; text-align: center; margin-right: 10px;">${imagePart}</div>
+    // Informations supplémentaires
+    let taskType = 'BATCH';
+    let formatType = '';
+    if (task.config) {
+        taskType = task.config.type || 'BATCH';
+        formatType = task.config.format_type ? ` - Format: ${task.config.format_type}` : '';
+    }
+
+    return `<div style="display: flex; align-items: center; padding: 12px; border: 1px solid #ddd; margin-bottom: 8px; border-radius: 8px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="width: 50px; text-align: center; margin-right: 12px;">${imagePart}</div>
         <div style="flex: 1;">
-            <div><strong>Tâche #${task.taskId}</strong> - ${clientName}</div>
-            <div style="font-size: 0.9em; color: #666;">Quantité: ${task.quantity}${progress}</div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <strong>Tâche #${task.taskId}</strong>
+                <span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; margin-left: 8px;">${taskType}</span>
+            </div>
+            <div style="color: #333; margin-bottom: 2px;">${clientName}${formatType}</div>
+            <div style="font-size: 0.9em; color: #666;">
+                Quantité: ${task.quantity}${progress}
+                ${task.config && task.config.dpi ? ` - DPI: ${task.config.dpi}` : ''}
+            </div>
         </div>
-        <button onclick="deleteTask(${task.taskId})" style="background: #dc3545; color: white; border: none; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; font-size: 14px;">×</button>
+        <div style="display: flex; gap: 5px;">
+            <button onclick="deleteCommande(${task.jobId})" title="Supprimer la commande entière" style="background: #ffc107; color: black; border: none; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; font-size: 14px;">🗑️</button>
+            <button onclick="deleteTask(${task.taskId})" title="Supprimer cette tâche" style="background: #dc3545; color: white; border: none; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; font-size: 14px;">×</button>
+        </div>
     </div>`;
 }
 
@@ -196,4 +215,113 @@ async function deleteTask(taskId) {
             alert('Erreur réseau');
         }
     }
+}
+
+// Suppression de commande entière
+async function deleteCommande(commandeId) {
+    if (confirm(`Supprimer la commande #${commandeId} et toutes ses tâches ? Cette action est irréversible.`)) {
+        try {
+            const response = await fetch(`/api/commandes/${commandeId}`, { method: 'DELETE' });
+            if (response.ok) {
+                showMessage(`Commande #${commandeId} supprimée`, 'success');
+                // Recharger la liste des tâches après un court délai
+                setTimeout(() => location.reload(), 500);
+            } else {
+                const errorData = await response.json();
+                showMessage(errorData.error || 'Erreur lors de la suppression', 'error');
+            }
+        } catch (error) {
+            showMessage('Erreur réseau', 'error');
+        }
+    }
+}
+
+function setupEventListeners() {
+    // Ajouter les event listeners pour les boutons pause/resume
+    const pauseBtn = document.getElementById('pause-btn');
+    const resumeBtn = document.getElementById('resume-btn');
+    const closeBtn = document.getElementById('message-close');
+
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/control/pause', { method: 'POST' });
+                if (response.ok) {
+                    pauseBtn.style.display = 'none';
+                    resumeBtn.style.display = 'inline-block';
+                    showMessage('Worker mis en pause', 'success');
+                } else {
+                    showMessage('Erreur lors de la mise en pause', 'error');
+                }
+            } catch (error) {
+                showMessage('Erreur réseau', 'error');
+            }
+        });
+    }
+
+    if (resumeBtn) {
+        resumeBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/control/resume', { method: 'POST' });
+                if (response.ok) {
+                    resumeBtn.style.display = 'none';
+                    pauseBtn.style.display = 'inline-block';
+                    showMessage('Worker relancé', 'success');
+                } else {
+                    showMessage('Erreur lors du redémarrage', 'error');
+                }
+            } catch (error) {
+                showMessage('Erreur réseau', 'error');
+            }
+        });
+    }
+
+    // Message overlay close
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('message-overlay').style.display = 'none';
+        });
+    }
+
+    // Initialiser l'état des boutons en fonction du statut du worker
+    updateControlButtons();
+}
+
+async function updateControlButtons() {
+    try {
+        const response = await fetch('/api/printer/status');
+        if (response.ok) {
+            const statusData = await response.json();
+            const pauseBtn = document.getElementById('pause-btn');
+            const resumeBtn = document.getElementById('resume-btn');
+
+            // Par défaut, montrer le bouton pause (worker actif)
+            pauseBtn.style.display = 'inline-block';
+            resumeBtn.style.display = 'none';
+
+            // Cette logique peut être ajustée selon votre implémentation
+            // Pour l'instant, on garde la logique simple
+        }
+    } catch (error) {
+        console.error('Error fetching worker status for button update:', error);
+    }
+}
+
+// Fonction pour afficher les messages de feedback
+function showMessage(text, type = 'info') {
+    const overlay = document.getElementById('message-overlay');
+    const titleEl = document.getElementById('message-title');
+    const textEl = document.getElementById('message-text');
+    const content = overlay.querySelector('.message-content');
+
+    titleEl.textContent = type === 'error' ? 'Erreur' : 'Succès';
+    textEl.textContent = text;
+    content.className = `message-content ${type}`;
+
+    overlay.style.display = 'flex';
+
+    // Auto-hide après 3 secondes
+    setTimeout(() => {
+        overlay.style.display = 'none';
+    }, 3000);
 }

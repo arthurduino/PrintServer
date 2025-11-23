@@ -10,6 +10,7 @@ from database import (
     init_db, add_missing_columns_if_needed, create_commande, get_commande, delete_commande, create_tache, get_commandes, get_taches_by_commande, parse_config_json,
     create_product, get_products, get_product, update_product, delete_product, get_product_image_path, DB_FILE
 )
+# Architecture CUPS uniquement - Migration complète depuis brother_ql directe
 from worker import run_worker
 
 app = FastAPI(title="Print Server API")
