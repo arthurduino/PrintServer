@@ -5,9 +5,9 @@ import time
 from queue import Queue, Empty
 import struct
 
-# Constantes USB Brother QL-700
-VENDOR_ID = 0x04f9  # Brother Industries
-PRODUCT_ID = 0x2042  # QL-700
+# Constantes USB Brother QL-700 (corrigées selon documentation officielle)
+VENDOR_ID = 0x04f9   # Brother Industries, Ltd
+PRODUCT_ID = 0x2042  # QL-700 Label Printer
 
 # États globaux thread-safe (mémoire partagée)
 printer_state = {
@@ -206,13 +206,35 @@ def writer_thread():
                         print(f"🧊 [WRITER] Pause - Attente fin de refroidissement pour tâche {task_id}")
                         time.sleep(0.1)  # Attente courte avant vérification
 
-                    # Envoi du chunk
-                    driver.send_command(bytes(packet.data))
-                    sent_chunks += 1
+                    # Gestion des différents types de packets (brother_ql peut retourner bytes, tuple, ou objets)
+                    if hasattr(packet, 'data'):
+                        # Objet avec attribut .data (raster data)
+                        data_to_send = bytes(packet.data)
+                    elif isinstance(packet, (bytes, bytearray)):
+                        # Directement des bytes
+                        data_to_send = bytes(packet)
+                    elif isinstance(packet, tuple) and len(packet) >= 2:
+                        # Tuple (instruction_type, data)
+                        data_to_send = bytes(packet[1]) if isinstance(packet[1], (bytes, bytearray)) else bytes([packet[1]])
+                    elif isinstance(packet, int):
+                        # Valeur entière seule (rare)
+                        data_to_send = bytes([packet])
+                    else:
+                        # Type inconnu - convertir en bytes
+                        try:
+                            data_to_send = bytes(packet)
+                        except:
+                            print(f"⚠️ [WRITER] Type de packet inconnu ignoré: {type(packet)} - {packet}")
+                            continue
 
-                    # Debug limité (pas trop verbose)
-                    if sent_chunks % 10 == 0:
-                        print(f"📊 [WRITER] {sent_chunks} chunks envoyés pour tâche {task_id}")
+                    # Envoi du chunk si les données sont valides
+                    if data_to_send:
+                        driver.send_command(data_to_send)
+                        sent_chunks += 1
+
+                        # Debug limité (pas trop verbose)
+                        if sent_chunks % 10 == 0:
+                            print(f"📊 [WRITER] {sent_chunks} chunks envoyés pour tâche {task_id}")
 
                 print(f"✅ [WRITER] Étiquette #{label_num} (tâche {task_id}) terminée ({sent_chunks} chunks)")
 
